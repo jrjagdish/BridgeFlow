@@ -1,0 +1,17 @@
+{
+  "google": {
+    "spreadsheet_id": "YOUR_GOOGLE_SHEET_ID",
+    "sheet_name": "Tasks",
+    "id_column": "ID"
+  },
+  "notion": { "database_id": "YOUR_NOTION_DATABASE_ID" },
+  "column_mapping": {
+    "ID": { "notion_property": "Task ID", "type": "rich_text" },
+    "Task Name": { "notion_property": "Name", "type": "title" },
+    "Assignee": { "notion_property": "Assignee", "type": "rich_text" },
+    "Status": { "notion_property": "Status", "type": "select" },
+    "Due Date": { "notion_property": "Due Date", "type": "date" },
+    "Notes": { "notion_property": "Notes", "type": "rich_text" }
+  },
+  "sync_interval_minutes": 5
+}
