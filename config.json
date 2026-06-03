@@ -1,7 +1,7 @@
 {
   "google": {
-    "spreadsheet_id": "YOUR_GOOGLE_SHEET_ID",
-    "sheet_name": "Tasks",
+    "spreadsheet_id": "1tXdvBTf9LExJNci5MqJY5G3JmM9Tf7Ibikqj-pCb8As",
+    "sheet_name": "Sheet1",
     "id_column": "ID"
   },
   "notion": { "database_id": "YOUR_NOTION_DATABASE_ID" },
