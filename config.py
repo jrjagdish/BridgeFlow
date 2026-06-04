@@ -7,16 +7,19 @@ try:
     def load_config():
         with open(CONFIG_FILE, 'r') as f:
             config = json.load(f)
+            
+           
         return config
-
+    google_config = load_config().get('google', {})
     def get_spreadsheet_id():
-        return load_config().get('spreadsheet_id')
+        
+        return google_config.get('spreadsheet_id')
 
     def get_sheet_name():
-        return load_config().get('sheet_name')
+        return google_config.get('sheet_name')
 
     def get_id_column():
-        return load_config().get('id_column')
+        return google_config.get('id_column')
 
     def get_notion_database_id():
         return load_config().get('notion_database_id')
