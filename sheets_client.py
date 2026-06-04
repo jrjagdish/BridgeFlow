@@ -3,6 +3,7 @@ import time
 from debug import logger
 from oauth import get_valid_access_token
 from config import get_spreadsheet_id, get_sheet_name
+from itertools import zip_longest
 
 sheets_api_url = "https://sheets.googleapis.com/v4/spreadsheets"
 
@@ -42,6 +43,6 @@ def fetch_sheet_data():
         return []
     headers = values[0]
     rows = values[1:]
-    sheet_data = [dict(zip(headers, row)) for row in rows if len(row)!=0 and any(cell.strip() for cell in row)]
+    sheet_data = [dict(zip_longest(headers, row)) for row in rows ]
 
     return sheet_data
