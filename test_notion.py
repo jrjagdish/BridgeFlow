@@ -12,7 +12,7 @@ from config import get_notion_database_id
 # First verify database is accessible 
 verify_database_connection(get_notion_database_id()) 
 # Then create a test page 
-row = {"Task ID": "T001","Tasks": "Test task", "status": "To Do", "Due": "2025-06-15", "Notes": ""} 
+row = {"ID": "1002","Task Name": "Test task", "Status": "In progress","Assignee":"Sunil", "Due_Date": "2025-06-15", "Notes": "Finish the to do app authentication"} 
 props = row_to_notion_page(row) 
 page_id = create_page(get_notion_database_id(), props) 
 print(f"Created page: {page_id}")

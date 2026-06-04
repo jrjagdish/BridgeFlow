@@ -8,6 +8,7 @@ def row_to_notion_page(row:dict):
     missing_columns = []
     for sheet_col,config in mapping.items():
         # print(f"config: {config}")
+        # print(f"column: {sheet_col}")
         if sheet_col not in row:
             missing_columns.append(sheet_col)
             logger.warning(f"Missing column '{sheet_col}' in row data. Skipping this column.")
@@ -63,7 +64,7 @@ def row_to_notion_page(row:dict):
         #     }
         elif notion_type == "number":
             try:
-                number_value = float(value)
+                number_value = int(value)
                 page[notion_property] = {
                     "number": number_value
                 }

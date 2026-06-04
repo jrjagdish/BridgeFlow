@@ -61,7 +61,7 @@ def create_page(database_id:str,properties:dict):
     except Exception as e:
         logger.error(f"Error creating page in Notion: {e}")
         raise
-    return result
+    # return result
 
 def update_page(page_id:str,properties:dict):
     payload = {
