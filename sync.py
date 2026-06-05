@@ -43,13 +43,21 @@ def  run_sync():
         seen_id.add(row_id)
 
         try:
-            stored_data,notion_page_id = get_row_state(row_id)
+            state_result = get_row_state(row_id)
+            
+            # 2. Check if it's None (New Row)
+            if state_result is None:
+                stored_data, notion_page_id = None, None
+            else:
+                # Safely unpack only if we actually got data back
+                stored_data, notion_page_id = state_result
             if stored_data is None:
                 logger.info(f"New row {row_id}")
                 properties = row_to_notion_page(row)
                 existing_page_id = find_page_by_id_property(
                     database_id,id_property_name,row_id
                 )
+                print(f"page_id : {existing_page_id}")
                 if existing_page_id:  
                     logger.info(f"Row {row_id} already exists in Notion. Restoring state.")                    
                     save_row_state(row_id, row, existing_page_id)                

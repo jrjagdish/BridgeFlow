@@ -8,7 +8,7 @@ load_dotenv()
 
 NOTION_TOKEN = os.getenv('NOTION_TOKEN')
 NOTION_DATABASE_ID = get_notion_database_id()
-NOTION_API_URL = "https://api.notion.com/v1/pages"
+NOTION_API_URL = "https://api.notion.com/v1"
 NOTION_VERSION = "2022-06-28"
 
 HEADERS = {
@@ -19,9 +19,10 @@ HEADERS = {
 
 def _request(method:str,endpoint:str,payload:dict=None):
     time.sleep(0.4)
-    url = f"{NOTION_API_URL}"
+    url = f"{NOTION_API_URL}/{endpoint}"
     for attempt in range(3):
         if method == "POST":
+            logger.info(f"got request from {method} , {endpoint},{url},{payload}")
             response = requests.post(url, headers=HEADERS, json=payload)
         elif method == "PATCH":
             response = requests.patch(url, headers=HEADERS, json=payload)
@@ -72,11 +73,16 @@ def update_page(page_id:str,properties:dict):
     return result
 
 def find_page_by_id_property(database_id:str,id_property_name:str,id_value:str):
+    try:
+        numeric_id = int(id_value.strip())
+    except ValueError:
+        # Fallback to float if it contains decimals, or handle gracefully
+        numeric_id = float(id_value.strip())
     payload = {
         "filter": {
             "property": id_property_name,
-            "rich_text": {
-                "equals": id_value
+            "number": {
+                "equals": numeric_id
             }
         }
     }
@@ -84,7 +90,7 @@ def find_page_by_id_property(database_id:str,id_property_name:str,id_value:str):
     results = result.get("results",[])
     if results:
         logger.info(f"Found page with {id_property_name}={id_value}")
-        return results[0]
+        return results[0]["id"]
     logger.info(f"No page found with {id_property_name}={id_value}")
     return None
 
