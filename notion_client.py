@@ -59,12 +59,16 @@ def create_page(database_id:str,properties:dict):
         }
         result = _request("POST","pages",payload)
         logger.debug(f"Created page with properties: {properties}")
+        return result.get("id")
     except Exception as e:
         logger.error(f"Error creating page in Notion: {e}")
         raise
     # return result
 
 def update_page(page_id:str,properties:dict):
+    if not page_id or str(page_id).strip() == "None":
+        logger.error("Attempted to update a page, but received an invalid or 'None' page_id.")
+        raise ValueError("page_id cannot be None or 'None' for a PATCH request.")
     payload = {
         "properties": properties
     }

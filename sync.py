@@ -70,7 +70,7 @@ def  run_sync():
                 logger.info(f"Updated row: {row_id}")
                 properties = row_to_notion_page(row)
                 update_page(notion_page_id,properties)
-                save_row_state(row_id,row,new_page_id)
+                save_row_state(row_id,row,notion_page_id)
                 rows_updated +=1
                 logger.info(f"Updated Notion page for {row_id}: {notion_page_id}")
         except Exception as e:

@@ -12,7 +12,7 @@ def start_scheduler():
         'interval',
         minutes = interval,
         id = 'sync_job',
-        replace_exisiting = True
+        replace_existing = True
     )
     scheduler.start()
     logger.info("----Scheduler Started----")
