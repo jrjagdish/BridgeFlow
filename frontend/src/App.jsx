@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useTheme } from './hooks/useTheme'
 import Landing from './pages/Landing'
 import Dashboard from './pages/Dashboard'
@@ -8,6 +8,10 @@ export default function App() {
   const { theme, toggle, isDark } = useTheme()
   const [user, setUser] = useState(null)
   const [checking, setChecking] = useState(true)
+
+  const refreshUser = useCallback(() => {
+    getMe().then(setUser).catch(() => setUser(null))
+  }, [])
 
   useEffect(() => {
     getMe()
@@ -32,7 +36,7 @@ export default function App() {
   return (
     <div className={`min-h-screen ${bgClass} transition-colors duration-500`}>
       {user
-        ? <Dashboard user={user} isDark={isDark} toggleTheme={toggle} onLogout={() => setUser(null)} />
+        ? <Dashboard user={user} isDark={isDark} toggleTheme={toggle} onLogout={() => setUser(null)} onUserRefresh={refreshUser} />
         : <Landing isDark={isDark} toggleTheme={toggle} onLogin={setUser} />
       }
     </div>

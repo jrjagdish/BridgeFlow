@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { loadConfig, saveConfig } from '../api'
+import { useState, useEffect } from 'react'
+import { getConfig, saveConfig } from '../api'
 
 const PROPERTY_TYPES = [
   'title', 'rich_text', 'number', 'select', 'multi_select',
@@ -65,27 +65,36 @@ function SectionCard({ title, desc, children, isDark }) {
   )
 }
 
-export default function Settings({ isDark }) {
-  const initial = loadConfig()
+const DEFAULT = {
+  spreadsheet_id: '',
+  sheet_name: 'Sheet1',
+  notion_database_id: '',
+  column_mappings: [],
+  sync_interval_minutes: 5,
+}
 
-  const [google, setGoogle] = useState(initial.google)
-  const [notion, setNotion] = useState(initial.notion)
-  const [mappings, setMappings] = useState(
-    // normalise: config.json stores as object, we use array internally
-    Array.isArray(initial.column_mapping)
-      ? initial.column_mapping
-      : Object.entries(initial.column_mapping).map(([sheet_col, v]) => ({
-          sheet_col,
-          notion_property: v.notion_property,
-          type: v.type,
-        }))
-  )
-  const [interval, setInterval] = useState(initial.sync_interval_minutes ?? 5)
-  const [saved, setSaved] = useState(false)
+export default function Settings({ isDark }) {
+  const [loading, setLoading]   = useState(true)
+  const [spreadsheetId, setSpreadsheetId] = useState('')
+  const [sheetName, setSheetName]         = useState('Sheet1')
+  const [notionDbId, setNotionDbId]       = useState('')
+  const [mappings, setMappings]           = useState([])
+  const [interval, setInterval]           = useState(5)
+  const [saved, setSaved]   = useState(false)
   const [saving, setSaving] = useState(false)
 
-  const setG = (key) => (val) => setGoogle(g => ({ ...g, [key]: val }))
-  const setN = (key) => (val) => setNotion(n => ({ ...n, [key]: val }))
+  useEffect(() => {
+    getConfig()
+      .then(cfg => {
+        setSpreadsheetId(cfg.spreadsheet_id || '')
+        setSheetName(cfg.sheet_name || 'Sheet1')
+        setNotionDbId(cfg.notion_database_id || '')
+        setMappings(Array.isArray(cfg.column_mappings) ? cfg.column_mappings : [])
+        setInterval(cfg.sync_interval_minutes ?? 5)
+      })
+      .catch(() => { /* unauthenticated — leave defaults */ })
+      .finally(() => setLoading(false))
+  }, [])
 
   const updateMapping = (i, key, val) =>
     setMappings(ms => ms.map((m, idx) => idx === i ? { ...m, [key]: val } : m))
@@ -98,16 +107,24 @@ export default function Settings({ isDark }) {
 
   const handleSave = async () => {
     setSaving(true)
-    const config = {
-      google,
-      notion,
-      column_mapping: mappings,
+    await saveConfig({
+      spreadsheet_id:        spreadsheetId,
+      sheet_name:            sheetName,
+      notion_database_id:    notionDbId,
+      column_mappings:       mappings,
       sync_interval_minutes: Number(interval),
-    }
-    await saveConfig(config)
+    })
     setSaving(false)
     setSaved(true)
     setTimeout(() => setSaved(false), 3000)
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="w-6 h-6 rounded-full border-2 border-violet-500/20 border-t-violet-500 animate-spin" />
+      </div>
+    )
   }
 
   const th = `text-left text-xs font-semibold uppercase tracking-wider pb-3
@@ -126,13 +143,6 @@ export default function Settings({ isDark }) {
         </p>
       </div>
 
-      {/* Local-storage notice */}
-      <div className={`flex items-start gap-3 px-4 py-3 rounded-xl border text-sm
-        ${isDark ? 'bg-amber-400/5 border-amber-400/20 text-amber-300' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>
-        <span className="text-base shrink-0">⚠️</span>
-        <span>Settings are saved locally in your browser for now. Backend persistence is coming soon.</span>
-      </div>
-
       {/* Google Sheets */}
       <SectionCard
         title="Google Sheets"
@@ -141,16 +151,12 @@ export default function Settings({ isDark }) {
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="Spreadsheet ID" hint="from the URL" isDark={isDark}>
-            <Input value={google.spreadsheet_id} onChange={setG('spreadsheet_id')}
+            <Input value={spreadsheetId} onChange={setSpreadsheetId}
               placeholder="1tXdvBTf9LExJNci…" isDark={isDark} mono />
           </Field>
           <Field label="Sheet Name" isDark={isDark}>
-            <Input value={google.sheet_name} onChange={setG('sheet_name')}
+            <Input value={sheetName} onChange={setSheetName}
               placeholder="Sheet1" isDark={isDark} />
-          </Field>
-          <Field label="ID Column" hint="unique row identifier" isDark={isDark}>
-            <Input value={google.id_column} onChange={setG('id_column')}
-              placeholder="ID" isDark={isDark} />
           </Field>
         </div>
       </SectionCard>
@@ -161,8 +167,8 @@ export default function Settings({ isDark }) {
         desc="Target Notion database to sync rows into"
         isDark={isDark}
       >
-        <Field label="Database ID" hint="from the Notion database URL" isDark={isDark}>
-          <Input value={notion.database_id} onChange={setN('database_id')}
+        <Field label="Database ID" hint="from the Notion database URL or created via Setup" isDark={isDark}>
+          <Input value={notionDbId} onChange={setNotionDbId}
             placeholder="375abee6b0e380…" isDark={isDark} mono />
         </Field>
       </SectionCard>
