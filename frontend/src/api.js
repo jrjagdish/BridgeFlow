@@ -30,7 +30,7 @@ export async function logout() {
 }
 
 // ---------------------------------------------------------------------------
-// Notion OAuth — same pattern as Google. Backend endpoint: GET /notion/oauth/start
+// Notion OAuth
 // ---------------------------------------------------------------------------
 
 export async function getNotionOAuthUrl() {
@@ -40,36 +40,75 @@ export async function getNotionOAuthUrl() {
   return data.auth_url
 }
 
-// ---------------------------------------------------------------------------
-// Config — mirrors config.json fields, stored in localStorage for now.
-// Replace with GET /config and POST /config when backend endpoint is ready.
-// ---------------------------------------------------------------------------
-
-const DEFAULT_CONFIG = {
-  google: {
-    spreadsheet_id: '',
-    sheet_name: 'Sheet1',
-    id_column: 'ID',
-  },
-  notion: {
-    database_id: '',
-  },
-  column_mapping: [
-    { sheet_col: 'ID',        notion_property: 'Task ID', type: 'number' },
-    { sheet_col: 'Task Name', notion_property: 'Tasks',   type: 'title' },
-    { sheet_col: 'Status',    notion_property: 'Status',  type: 'status' },
-  ],
-  sync_interval_minutes: 5,
+export async function disconnectNotion() {
+  const res = await fetch('/oauth/notion/disconnect', { method: 'POST', credentials: 'include' })
+  if (!res.ok) throw new Error('Failed to disconnect Notion')
+  return res.json()
 }
 
-export function loadConfig() {
-  // TODO: GET /config
-  const raw = localStorage.getItem('bf_config')
-  if (!raw) return DEFAULT_CONFIG
-  try { return JSON.parse(raw) } catch { return DEFAULT_CONFIG }
+// ---------------------------------------------------------------------------
+// Google Sheets — fetch header row + preview from a spreadsheet
+// ---------------------------------------------------------------------------
+
+export async function fetchSheetPreview(spreadsheetId, sheetName = 'Sheet1') {
+  const res = await fetch('/sheets/preview', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ spreadsheet_id: spreadsheetId, sheet_name: sheetName }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || 'Failed to fetch sheet headers')
+  }
+  return res.json()  // { headers: string[], preview: dict[] }
+}
+
+// ---------------------------------------------------------------------------
+// Notion — create a database with the given property schema
+// ---------------------------------------------------------------------------
+
+export async function createNotionDatabase({ parentPageId, title, properties }) {
+  const res = await fetch('/notion/database', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      parent_page_id: parentPageId,
+      title,
+      properties,
+    }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || 'Failed to create Notion database')
+  }
+  return res.json()  // { database_id: string, url: string }
+}
+
+// ---------------------------------------------------------------------------
+// Config — DB-backed per-user config (replaces localStorage)
+// ---------------------------------------------------------------------------
+
+export async function getConfig() {
+  const res = await fetch('/config', { credentials: 'include' })
+  if (!res.ok) throw new Error('Failed to load config')
+  return res.json()
 }
 
 export async function saveConfig(config) {
-  // TODO: POST /config  { ...config }
-  localStorage.setItem('bf_config', JSON.stringify(config))
+  const res = await fetch('/config', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      spreadsheet_id:        config.spreadsheet_id ?? null,
+      sheet_name:            config.sheet_name ?? null,
+      notion_database_id:    config.notion_database_id ?? null,
+      column_mappings:       config.column_mappings ?? null,
+      sync_interval_minutes: config.sync_interval_minutes ?? null,
+    }),
+  })
+  if (!res.ok) throw new Error('Failed to save config')
+  return res.json()
 }

@@ -1,5 +1,7 @@
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.responses import HTMLResponse, Response, RedirectResponse
+from pydantic import BaseModel
+from typing import Optional, List
 from debug import logger
 from dotenv import load_dotenv
 import os
@@ -8,18 +10,45 @@ import threading
 from contextlib import asynccontextmanager
 from tortoise.contrib.fastapi import RegisterTortoise
 
-# --- v1 imports (single-user, token.json based) ---
-# from oauth import get_authorize, exchange_code_for_tokens, get_valid_access_token
-
-# --- v2 imports (multi-user, DB + cookie based) ---
 from v2.models import get_db_config
 from v2.oauth import get_authorize_url, exchange_code_and_save_user
 from v2.notion_oauth import get_notion_authorize_url, exchange_notion_code_and_save
 from v2.auth import set_session_cookie, get_current_user_id
+from v2.sheets_service import fetch_sheet_preview
+from v2.notion_service import create_notion_database
 
 from scheduler import start_scheduler, stop_scheduler
 from notion_client import verify_database_connection
 from config import get_notion_database_id
+
+
+# ---------------------------------------------------------------------------
+# Request / response schemas
+# ---------------------------------------------------------------------------
+
+class SheetPreviewRequest(BaseModel):
+    spreadsheet_id: str
+    sheet_name: str = "Sheet1"
+
+
+class PropertyMapping(BaseModel):
+    sheet_col: str
+    notion_property: str
+    type: str = "rich_text"
+
+
+class CreateDatabaseRequest(BaseModel):
+    parent_page_id: str
+    title: str = "BridgeFlow Sync"
+    properties: List[PropertyMapping]
+
+
+class SaveConfigRequest(BaseModel):
+    spreadsheet_id: Optional[str] = None
+    sheet_name: Optional[str] = None
+    notion_database_id: Optional[str] = None
+    column_mappings: Optional[List[dict]] = None
+    sync_interval_minutes: Optional[int] = None
 
 load_dotenv()
 
@@ -185,6 +214,17 @@ def logout_user(response: Response):
     return {"status": "logged out"}
 
 
+@app.post("/oauth/notion/disconnect")
+async def notion_disconnect(user_id: str = Depends(get_current_user_id)):
+    """Clear the user's Notion token so they can reconnect to a different workspace/page."""
+    from v2.models import User
+    user = await User.get(id=user_id)
+    user.notion_token = None
+    await user.save()
+    logger.info(f"[notion] Disconnected for {user.email}")
+    return {"status": "disconnected"}
+
+
 # ---------------------------------------------------------------------------
 # Sync routes (v2 — reads user from session cookie)
 # ---------------------------------------------------------------------------
@@ -212,3 +252,83 @@ def status(user_id: str = Depends(get_current_user_id)):
             for row in raw
         ]
     }
+
+
+# ---------------------------------------------------------------------------
+# Google Sheets — preview endpoint (uses the user's stored Google token)
+# ---------------------------------------------------------------------------
+
+@app.post("/sheets/preview")
+async def sheets_preview(body: SheetPreviewRequest, user_id: str = Depends(get_current_user_id)):
+    """
+    Fetch the header row + first 5 data rows from the given spreadsheet.
+    The user must have completed Google OAuth first (so their token is in DB).
+    """
+    try:
+        headers, preview = await fetch_sheet_preview(
+            user_id, body.spreadsheet_id.strip(), body.sheet_name.strip() or "Sheet1"
+        )
+        return {"headers": headers, "preview": preview}
+    except Exception as e:
+        logger.error(f"[sheets] preview failed: {e}")
+        raise HTTPException(status_code=400, detail=f"Could not read spreadsheet: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Notion — create a database under a parent page
+# ---------------------------------------------------------------------------
+
+@app.post("/notion/database")
+async def notion_create_database(body: CreateDatabaseRequest, user_id: str = Depends(get_current_user_id)):
+    """
+    Create a new Notion database with the given property schema.
+    parent_page_id must be a Notion page the user has shared with the integration.
+    """
+    try:
+        result = await create_notion_database(
+            user_id,
+            body.parent_page_id.strip(),
+            body.title.strip() or "BridgeFlow Sync",
+            [p.model_dump() for p in body.properties],
+        )
+        return result
+    except Exception as e:
+        logger.error(f"[notion] create_database failed: {e}")
+        raise HTTPException(status_code=400, detail=f"Could not create Notion database: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Config — persist per-user settings in the DB (replaces localStorage)
+# ---------------------------------------------------------------------------
+
+@app.get("/config")
+async def get_config_route(user_id: str = Depends(get_current_user_id)):
+    """Return this user's saved sync configuration."""
+    from v2.models import UserConfig
+    config, _ = await UserConfig.get_or_create(user_id=user_id)
+    return {
+        "spreadsheet_id":       config.spreadsheet_id or "",
+        "sheet_name":           config.sheet_name or "Sheet1",
+        "notion_database_id":   config.notion_database_id or "",
+        "column_mappings":      config.column_mappings or [],
+        "sync_interval_minutes": config.sync_interval_minutes,
+    }
+
+
+@app.post("/config")
+async def save_config_route(body: SaveConfigRequest, user_id: str = Depends(get_current_user_id)):
+    """Persist the user's sync configuration to the DB."""
+    from v2.models import UserConfig
+    config, _ = await UserConfig.get_or_create(user_id=user_id)
+    if body.spreadsheet_id is not None:
+        config.spreadsheet_id = body.spreadsheet_id
+    if body.sheet_name is not None:
+        config.sheet_name = body.sheet_name
+    if body.notion_database_id is not None:
+        config.notion_database_id = body.notion_database_id
+    if body.column_mappings is not None:
+        config.column_mappings = body.column_mappings
+    if body.sync_interval_minutes is not None:
+        config.sync_interval_minutes = body.sync_interval_minutes
+    await config.save()
+    return {"status": "saved"}

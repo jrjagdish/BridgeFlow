@@ -3,7 +3,8 @@ import Navbar from '../components/Navbar'
 import StatusBadge from '../components/StatusBadge'
 import SyncLogs from '../components/SyncLogs'
 import Settings from './Settings'
-import { logout, triggerSync, getNotionOAuthUrl } from '../api'
+import Setup from './Setup'
+import { logout, triggerSync, getNotionOAuthUrl, disconnectNotion } from '../api'
 
 // ---------------------------------------------------------------------------
 // Sidebar nav item
@@ -46,7 +47,7 @@ function StatCard({ label, value, sub, accent, isDark }) {
 // ---------------------------------------------------------------------------
 // Service card
 // ---------------------------------------------------------------------------
-function ServiceCard({ icon, name, connected, detail, onConnect, connecting, connectErr, isDark }) {
+function ServiceCard({ icon, name, connected, detail, onConnect, connecting, connectErr, onDisconnect, disconnecting, isDark }) {
   return (
     <div className={`glass rounded-2xl p-5 ${isDark ? 'glass-card-dark' : 'glass-card-light'}`}>
       <div className="flex items-center justify-between gap-4">
@@ -63,9 +64,27 @@ function ServiceCard({ icon, name, connected, detail, onConnect, connecting, con
           </div>
         </div>
 
-        <div className="shrink-0">
+        <div className="shrink-0 flex items-center gap-2">
           {connected ? (
-            <StatusBadge status="success" label="Connected" pulse />
+            <>
+              <StatusBadge status="success" label="Connected" pulse />
+              {onDisconnect && (
+                <button
+                  onClick={onDisconnect}
+                  disabled={disconnecting}
+                  title="Disconnect"
+                  className={`text-xs px-3 py-1.5 rounded-lg border transition-all duration-150
+                    disabled:opacity-50 disabled:cursor-not-allowed
+                    ${isDark
+                      ? 'border-white/10 text-slate-500 hover:text-red-400 hover:border-red-400/30 hover:bg-red-400/5'
+                      : 'border-slate-200 text-slate-400 hover:text-red-500 hover:border-red-300 hover:bg-red-50'}`}
+                >
+                  {disconnecting
+                    ? <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin inline-block" />
+                    : 'Disconnect'}
+                </button>
+              )}
+            </>
           ) : (
             <button
               onClick={onConnect}
@@ -81,7 +100,6 @@ function ServiceCard({ icon, name, connected, detail, onConnect, connecting, con
         </div>
       </div>
 
-      {/* Inline error under the card — only shown if connection attempt failed */}
       {connectErr && (
         <p className="mt-3 text-xs text-red-400 bg-red-400/10 border border-red-400/20 px-3 py-2 rounded-xl">
           {connectErr}
@@ -94,11 +112,12 @@ function ServiceCard({ icon, name, connected, detail, onConnect, connecting, con
 // ---------------------------------------------------------------------------
 // Main Dashboard
 // ---------------------------------------------------------------------------
-export default function Dashboard({ user, isDark, toggleTheme, onLogout }) {
+export default function Dashboard({ user, isDark, toggleTheme, onLogout, onUserRefresh }) {
   const [view, setView]               = useState('overview')
   const [syncing, setSyncing]         = useState(false)
   const [syncMsg, setSyncMsg]         = useState(null)
-  const [notionConnecting, setNotionConnecting] = useState(false)
+  const [notionConnecting, setNotionConnecting]   = useState(false)
+  const [notionDisconnecting, setNotionDisconnecting] = useState(false)
   const [notionErr, setNotionErr]     = useState(null)
 
   const handleLogout = async () => {
@@ -135,6 +154,18 @@ export default function Dashboard({ user, isDark, toggleTheme, onLogout }) {
     }
   }
 
+  const handleNotionDisconnect = async () => {
+    setNotionDisconnecting(true)
+    try {
+      await disconnectNotion()
+      onUserRefresh()
+    } catch {
+      // silent — worst case user can reload
+    } finally {
+      setNotionDisconnecting(false)
+    }
+  }
+
   const orb = 'fixed rounded-full blur-3xl pointer-events-none opacity-30'
 
   return (
@@ -161,6 +192,9 @@ export default function Dashboard({ user, isDark, toggleTheme, onLogout }) {
 
           <nav className="space-y-1">
             <NavItem icon="⚡" label="Overview" active={view === 'overview'} onClick={() => setView('overview')} isDark={isDark} />
+            {user.google_connected && user.notion_connected && (
+              <NavItem icon="🔧" label="Setup" active={view === 'setup'} onClick={() => setView('setup')} isDark={isDark} />
+            )}
             <NavItem icon="⚙️" label="Settings" active={view === 'settings'} onClick={() => setView('settings')} isDark={isDark} />
           </nav>
 
@@ -176,6 +210,9 @@ export default function Dashboard({ user, isDark, toggleTheme, onLogout }) {
           ${isDark ? 'bg-black/40 border-white/[0.06]' : 'bg-white/60 border-slate-100'}`}>
           {[
             { icon: '⚡', label: 'Overview', key: 'overview' },
+            ...(user.google_connected && user.notion_connected
+              ? [{ icon: '🔧', label: 'Setup', key: 'setup' }]
+              : []),
             { icon: '⚙️', label: 'Settings', key: 'settings' },
           ].map(tab => (
             <button
@@ -275,10 +312,35 @@ export default function Dashboard({ user, isDark, toggleTheme, onLogout }) {
                     onConnect={handleNotionConnect}
                     connecting={notionConnecting}
                     connectErr={notionErr}
+                    onDisconnect={handleNotionDisconnect}
+                    disconnecting={notionDisconnecting}
                     isDark={isDark}
                   />
                 </div>
               </div>
+
+              {/* Setup CTA — shown when both services are connected */}
+              {user.google_connected && user.notion_connected && (
+                <div className={`flex items-start gap-3 px-5 py-4 rounded-2xl border mb-6 text-sm
+                  ${isDark
+                    ? 'bg-violet-400/5 border-violet-400/15 text-violet-300'
+                    : 'bg-violet-50 border-violet-200 text-violet-700'}`}>
+                  <span className="text-xl shrink-0">🔧</span>
+                  <div className="flex-1">
+                    <p className="font-semibold mb-1">Ready to configure your sync pipeline</p>
+                    <p className={`text-xs leading-relaxed ${isDark ? 'text-violet-400/70' : 'text-violet-600'}`}>
+                      Both services are connected. Go to <strong>Setup</strong> to provide your spreadsheet ID,
+                      map columns, and create a Notion database — then syncing will work automatically.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setView('setup')}
+                    className="btn-primary text-xs px-4 py-2 shrink-0"
+                  >
+                    Open Setup
+                  </button>
+                </div>
+              )}
 
               {/* Notion OAuth explainer — shown only when not connected */}
               {!user.notion_connected && (
@@ -308,6 +370,9 @@ export default function Dashboard({ user, isDark, toggleTheme, onLogout }) {
               </div>
             </div>
           )}
+
+          {/* ─── SETUP ───────────────────────────────────── */}
+          {view === 'setup' && <Setup isDark={isDark} />}
 
           {/* ─── SETTINGS ────────────────────────────────── */}
           {view === 'settings' && <Settings isDark={isDark} />}

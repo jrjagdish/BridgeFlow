@@ -58,19 +58,26 @@ class User(Model):
     email = fields.CharField(max_length=255, unique=True)
     google_id = fields.CharField(max_length=255, unique=True)
 
-    # --- v1 (single token string — too small, no expiry tracking) ---
-    # google_tk = fields.CharField(max_length=255)
-    # notion_tk = fields.CharField(max_length=255, null=True)
-
-    # --- v2: split into proper fields so we can refresh per-user ---
     google_access_token = fields.TextField(null=True)
     google_refresh_token = fields.TextField(null=True)
     google_token_expires_at = fields.DatetimeField(null=True)
 
-    # Notion token: user pastes this manually, not OAuth
     notion_token = fields.CharField(max_length=512, null=True)
 
     created_at = fields.DatetimeField(auto_now_add=True)
 
     class Meta:
         table = "users"
+
+
+class UserConfig(Model):
+    """Per-user sync configuration stored in the DB (replaces localStorage / config.json)."""
+    user = fields.OneToOneField("models.User", related_name="config", on_delete=fields.CASCADE)
+    spreadsheet_id = fields.CharField(max_length=255, null=True)
+    sheet_name = fields.CharField(max_length=255, default="Sheet1")
+    notion_database_id = fields.CharField(max_length=255, null=True)
+    column_mappings = fields.JSONField(null=True)   # [{sheet_col, notion_property, type}]
+    sync_interval_minutes = fields.IntField(default=5)
+
+    class Meta:
+        table = "user_configs"
