@@ -22,7 +22,7 @@ try:
         return google_config.get('id_column')
 
     def get_notion_database_id():
-        return load_config().get('notion_database_id')
+        return load_config().get('notion',{}).get('database_id')
 
     def get_column_mapping():
         return load_config().get('column_mapping', {})

@@ -4,13 +4,13 @@
     "sheet_name": "Sheet1",
     "id_column": "ID"
   },
-  "notion": { "database_id": "YOUR_NOTION_DATABASE_ID" },
+  "notion": { "database_id": "375abee6b0e38085ab6dd634be1f738e" },
   "column_mapping": {
-    "ID": { "notion_property": "Task ID", "type": "rich_text" },
-    "Task Name": { "notion_property": "Name", "type": "title" },
+    "ID": { "notion_property": "Task ID", "type": "number" },
+    "Task Name": { "notion_property": "Tasks", "type": "title" },
     "Assignee": { "notion_property": "Assignee", "type": "rich_text" },
-    "Status": { "notion_property": "Status", "type": "select" },
-    "Due Date": { "notion_property": "Due Date", "type": "date" },
+    "Status": { "notion_property": "Status", "type": "status" },
+    "Due_Date": { "notion_property": "Due", "type": "Date" },
     "Notes": { "notion_property": "Notes", "type": "rich_text" }
   },
   "sync_interval_minutes": 5
