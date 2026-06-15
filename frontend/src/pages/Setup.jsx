@@ -175,11 +175,10 @@ function Step2({ isDark, spreadsheetId, sheetName, headers, preview, onDone }) {
     type: i === 0 ? 'title' : 'rich_text',
   }))
 
-  const [mappings, setMappings]     = useState(initialMappings)
-  const [parentPageId, setParentPageId] = useState('')
-  const [dbTitle, setDbTitle]       = useState('BridgeFlow Sync')
-  const [loading, setLoading]       = useState(false)
-  const [error, setError]           = useState(null)
+  const [mappings, setMappings] = useState(initialMappings)
+  const [dbTitle, setDbTitle]   = useState('BridgeFlow Sync')
+  const [loading, setLoading]   = useState(false)
+  const [error, setError]       = useState(null)
 
   const update = (i, key, val) =>
     setMappings(ms => ms.map((m, idx) => idx === i ? { ...m, [key]: val } : m))
@@ -187,10 +186,6 @@ function Step2({ isDark, spreadsheetId, sheetName, headers, preview, onDone }) {
   const titleCount = mappings.filter(m => m.type === 'title').length
 
   const handleCreate = async () => {
-    if (!parentPageId.trim()) {
-      setError('Please enter the Notion parent page ID.')
-      return
-    }
     if (titleCount === 0) {
       setError('Exactly one column must have type "title" — it becomes the row name in Notion.')
       return
@@ -203,7 +198,6 @@ function Step2({ isDark, spreadsheetId, sheetName, headers, preview, onDone }) {
     setError(null)
     try {
       const result = await createNotionDatabase({
-        parentPageId: parentPageId.trim(),
         title: dbTitle.trim() || 'BridgeFlow Sync',
         properties: mappings,
       })
@@ -227,7 +221,7 @@ function Step2({ isDark, spreadsheetId, sheetName, headers, preview, onDone }) {
 
   return (
     <Card isDark={isDark}>
-      <StepHeader n={2} label="Map columns & create Notion database" sub="Adjust property names and types, then pick a parent page" active done={false} isDark={isDark} />
+      <StepHeader n={2} label="Map columns & create Notion database" sub="Adjust property names and types, then click create" active done={false} isDark={isDark} />
 
       {/* Column mapping table */}
       <div className="overflow-x-auto -mx-1 mb-6">
@@ -273,30 +267,12 @@ function Step2({ isDark, spreadsheetId, sheetName, headers, preview, onDone }) {
         </div>
       )}
 
-      {/* Notion parent page ID */}
-      <div className="space-y-4 mb-4">
-        <div>
-          <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-            Notion Parent Page ID
-          </label>
-          <Input
-            value={parentPageId}
-            onChange={setParentPageId}
-            placeholder="8935f9d140c14f2a9cf56c0a59e4c6df"
-            isDark={isDark}
-            mono
-          />
-          <p className={`mt-1.5 text-xs ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
-            Open the Notion page where you want the database, copy its ID from the URL (the 32-char hex after the last /).
-            Make sure you've shared this page with the BridgeFlow integration.
-          </p>
-        </div>
-        <div>
-          <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-            Database Name
-          </label>
-          <Input value={dbTitle} onChange={setDbTitle} placeholder="BridgeFlow Sync" isDark={isDark} />
-        </div>
+      {/* Database name */}
+      <div className="mb-4">
+        <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+          Database Name
+        </label>
+        <Input value={dbTitle} onChange={setDbTitle} placeholder="BridgeFlow Sync" isDark={isDark} />
       </div>
 
       <ErrorMsg msg={error} isDark={isDark} />

@@ -1,5 +1,5 @@
 """
-v2/notion_service.py — Notion database creation using the user's stored Notion token.
+v2/notion_service.py — Notion page and database creation using the user's stored Notion token.
 """
 
 import requests
@@ -29,6 +29,48 @@ def _format_uuid(raw: str) -> str:
     if len(s) != 32:
         return raw
     return f"{s[:8]}-{s[8:12]}-{s[12:16]}-{s[16:20]}-{s[20:]}"
+
+
+async def create_notion_page(user_id: str, title: str = "BridgeFlow") -> dict:
+    """
+    Create a new page at the Notion workspace root.
+
+    Requires the user's Notion token to have workspace-level access (granted
+    during the Notion OAuth consent screen when the user selects 'All pages').
+
+    Returns: {page_id: str, url: str}
+    """
+    from v2.models import User
+    user = await User.get(id=user_id)
+
+    body = {
+        "parent": {"type": "workspace", "workspace": True},
+        "properties": {
+            "title": {
+                "title": [{"type": "text", "text": {"content": title}}]
+            }
+        },
+    }
+
+    resp = requests.post(
+        f"{NOTION_API}/pages",
+        headers={
+            "Authorization": f"Bearer {user.notion_token}",
+            "Notion-Version": NOTION_VERSION,
+            "Content-Type": "application/json",
+        },
+        json=body,
+        timeout=15,
+    )
+
+    if not resp.ok:
+        logger.error(f"[notion] create_page failed {resp.status_code}: {resp.text}")
+        resp.raise_for_status()
+
+    data = resp.json()
+    page_id = data["id"].replace("-", "")
+    logger.info(f"[notion] Created page '{title}' id={page_id}")
+    return {"page_id": page_id, "url": data.get("url", "")}
 
 
 async def create_notion_database(

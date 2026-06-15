@@ -15,7 +15,7 @@ from v2.oauth import get_authorize_url, exchange_code_and_save_user
 from v2.notion_oauth import get_notion_authorize_url, exchange_notion_code_and_save
 from v2.auth import set_session_cookie, get_current_user_id
 from v2.sheets_service import fetch_sheet_preview
-from v2.notion_service import create_notion_database
+from v2.notion_service import create_notion_page, create_notion_database
 
 from scheduler import start_scheduler, stop_scheduler
 from notion_client import verify_database_connection
@@ -38,7 +38,7 @@ class PropertyMapping(BaseModel):
 
 
 class CreateDatabaseRequest(BaseModel):
-    parent_page_id: str
+    parent_page_id: Optional[str] = None  # if omitted, a new Notion page is created automatically
     title: str = "BridgeFlow Sync"
     properties: List[PropertyMapping]
 
@@ -275,22 +275,46 @@ async def sheets_preview(body: SheetPreviewRequest, user_id: str = Depends(get_c
 
 
 # ---------------------------------------------------------------------------
-# Notion — create a database under a parent page
+# Notion — create a page, then a database inside it
 # ---------------------------------------------------------------------------
+
+@app.post("/notion/page")
+async def notion_create_page(user_id: str = Depends(get_current_user_id)):
+    """
+    Create a new BridgeFlow page at the root of the user's Notion workspace.
+    Returns the page_id to use as parent when creating a database.
+    Requires the Notion integration to have workspace-level access.
+    """
+    try:
+        result = await create_notion_page(user_id, title="BridgeFlow")
+        return result
+    except Exception as e:
+        logger.error(f"[notion] create_page failed: {e}")
+        raise HTTPException(status_code=400, detail=f"Could not create Notion page: {e}")
+
 
 @app.post("/notion/database")
 async def notion_create_database(body: CreateDatabaseRequest, user_id: str = Depends(get_current_user_id)):
     """
     Create a new Notion database with the given property schema.
-    parent_page_id must be a Notion page the user has shared with the integration.
+    If parent_page_id is omitted, a 'BridgeFlow' page is created automatically
+    in the user's Notion workspace and used as the parent.
     """
     try:
+        parent_id = body.parent_page_id.strip() if body.parent_page_id else None
+
+        if not parent_id:
+            page = await create_notion_page(user_id, title=body.title.strip() or "BridgeFlow")
+            parent_id = page["page_id"]
+            logger.info(f"[notion] Auto-created parent page id={parent_id}")
+
         result = await create_notion_database(
             user_id,
-            body.parent_page_id.strip(),
+            parent_id,
             body.title.strip() or "BridgeFlow Sync",
             [p.model_dump() for p in body.properties],
         )
+        result["page_id"] = parent_id
         return result
     except Exception as e:
         logger.error(f"[notion] create_database failed: {e}")
