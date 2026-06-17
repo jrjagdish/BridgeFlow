@@ -1,12 +1,13 @@
 from fastapi import FastAPI, HTTPException, Depends
-from fastapi.responses import HTMLResponse, Response, RedirectResponse
+from fastapi.responses import Response, RedirectResponse, StreamingResponse
 from pydantic import BaseModel
 from typing import Optional, List
 from debug import logger
 from dotenv import load_dotenv
-import os
+import asyncio
 import json
-import threading
+import os
+import uuid
 from contextlib import asynccontextmanager
 from tortoise.contrib.fastapi import RegisterTortoise
 
@@ -16,10 +17,6 @@ from v2.notion_oauth import get_notion_authorize_url, exchange_notion_code_and_s
 from v2.auth import set_session_cookie, get_current_user_id
 from v2.sheets_service import fetch_sheet_preview
 from v2.notion_service import create_notion_page, create_notion_database
-
-from scheduler import start_scheduler, stop_scheduler
-from notion_client import verify_database_connection
-from config import get_notion_database_id
 
 
 # ---------------------------------------------------------------------------
@@ -48,6 +45,7 @@ class SaveConfigRequest(BaseModel):
     sheet_name: Optional[str] = None
     notion_database_id: Optional[str] = None
     column_mappings: Optional[List[dict]] = None
+    id_column: Optional[str] = None          # Sheet column used as unique row identifier
     sync_interval_minutes: Optional[int] = None
 
 load_dotenv()
@@ -55,32 +53,21 @@ load_dotenv()
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
 
+async def run_migrations():
+    """Apply additive schema changes that generate_schemas won't handle."""
+    from tortoise import connections
+    conn = connections.get("default")
+    await conn.execute_script(
+        "ALTER TABLE user_configs ADD COLUMN IF NOT EXISTS id_column VARCHAR(255);"
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("----BridgeFlow Starting----")
-
-    # v2: RegisterTortoise is a context manager that keeps the Tortoise connection
-    # active across ALL request tasks for the app's lifetime.
-    # v1 used init_db() (Tortoise.init()) which set global state — that broke in
-    # Tortoise ORM 1.x because global state doesn't propagate to new request tasks.
     async with RegisterTortoise(app, config=get_db_config(), generate_schemas=True):
-
-        # --- v1: init_db() without await (was a bug), and without context mgr ---
-        # init_db()
-
-        try:
-            verify_database_connection(get_notion_database_id())
-        except Exception as e:
-            logger.error(f"Error : Coudn't access database ID: {e}")
-
-        from sync import run_sync
-        thread = threading.Thread(target=run_sync, daemon=True)
-        thread.start()
-
-        start_scheduler()
+        await run_migrations()
         yield
-        stop_scheduler()
-
     logger.info("---BridgeFlow Stopped---")
 
 
@@ -236,21 +223,113 @@ async def notion_disconnect(user_id: str = Depends(get_current_user_id)):
 #     thread.start()
 #     return {"status": "Sync triggered", "user_id": user_id}
 
-@app.get("/status")
-def status(user_id: str = Depends(get_current_user_id)):
-    from state_store import get_sync_logs
-    raw = get_sync_logs(10)
+@app.post("/sync/trigger")
+async def trigger_sync(user_id: str = Depends(get_current_user_id)):
+    """
+    Manually trigger a sync for the current user.
+    Returns job_id — poll GET /sync/jobs/{job_id} to track progress.
+    The Celery worker must be running separately for the job to execute.
+    """
+    from v2.models import SyncJob
+    from v2.tasks import sync_user
+
+    job = await SyncJob.create(
+        id=uuid.uuid4(),
+        user_id=user_id,
+        status="pending",
+        triggered_by="manual",
+    )
+    task = sync_user.apply_async(args=[str(user_id), str(job.id)])
+    job.celery_task_id = task.id
+    await job.save()
+
+    logger.info(f"[sync] Manual trigger user={user_id} job={job.id} celery={task.id}")
+    return {"job_id": str(job.id), "celery_task_id": task.id, "status": "pending"}
+
+
+@app.get("/sync/jobs")
+async def list_sync_jobs(user_id: str = Depends(get_current_user_id), limit: int = 20):
+    """Return the most recent sync jobs for the current user, newest first."""
+    from v2.models import SyncJob
+
+    jobs = await SyncJob.filter(user_id=user_id).order_by("-created_at").limit(limit)
+    return [_job_to_dict(j) for j in jobs]
+
+
+@app.get("/sync/jobs/{job_id}")
+async def get_sync_job(job_id: str, user_id: str = Depends(get_current_user_id)):
+    """Return full details of a single sync job."""
+    from v2.models import SyncJob
+
+    job = await SyncJob.get_or_none(id=job_id, user_id=user_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return _job_to_dict(job)
+
+
+@app.get("/sync/jobs/{job_id}/stream")
+async def stream_job_status(job_id: str, user_id: str = Depends(get_current_user_id)):
+    """
+    SSE stream that emits the job's current state every second until it finishes.
+    Frontend: const es = new EventSource('/sync/jobs/<id>/stream')
+    """
+    from v2.models import SyncJob
+
+    async def _events():
+        terminal = {"completed", "completed_with_errors", "failed"}
+        last_payload = None
+        while True:
+            job = await SyncJob.get_or_none(id=job_id, user_id=user_id)
+            if job is None:
+                yield f"data: {json.dumps({'error': 'job not found'})}\n\n"
+                return
+            payload = json.dumps(_job_to_dict(job))
+            if payload != last_payload:
+                yield f"data: {payload}\n\n"
+                last_payload = payload
+            if job.status in terminal:
+                return
+            await asyncio.sleep(1)
+
+    return StreamingResponse(
+        _events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.get("/sync/rows")
+async def list_synced_rows(user_id: str = Depends(get_current_user_id), limit: int = 100):
+    """Return all rows tracked in Notion for the current user (audit trail)."""
+    from v2.models import SyncedRow
+
+    rows = await SyncedRow.filter(user_id=user_id).order_by("-last_synced_at").limit(limit)
+    return [
+        {
+            "row_id": r.row_id,
+            "notion_page_id": r.notion_page_id,
+            "status": r.status,
+            "error_message": r.error_message,
+            "last_synced_at": r.last_synced_at.isoformat() if r.last_synced_at else None,
+        }
+        for r in rows
+    ]
+
+
+def _job_to_dict(j) -> dict:
     return {
-        "logs": [
-            {
-                "sync_time":    row[0],
-                "rows_fetched": row[1],
-                "rows_created": row[2],
-                "rows_updated": row[3],
-                "errors":       json.loads(row[4]) if row[4] else [],
-            }
-            for row in raw
-        ]
+        "id": str(j.id),
+        "status": j.status,
+        "triggered_by": j.triggered_by,
+        "celery_task_id": j.celery_task_id,
+        "started_at": j.started_at.isoformat() if j.started_at else None,
+        "finished_at": j.finished_at.isoformat() if j.finished_at else None,
+        "rows_fetched": j.rows_fetched,
+        "rows_created": j.rows_created,
+        "rows_updated": j.rows_updated,
+        "rows_skipped": j.rows_skipped,
+        "errors": j.errors,
+        "created_at": j.created_at.isoformat() if j.created_at else None,
     }
 
 
@@ -331,10 +410,11 @@ async def get_config_route(user_id: str = Depends(get_current_user_id)):
     from v2.models import UserConfig
     config, _ = await UserConfig.get_or_create(user_id=user_id)
     return {
-        "spreadsheet_id":       config.spreadsheet_id or "",
-        "sheet_name":           config.sheet_name or "Sheet1",
-        "notion_database_id":   config.notion_database_id or "",
-        "column_mappings":      config.column_mappings or [],
+        "spreadsheet_id":        config.spreadsheet_id or "",
+        "sheet_name":            config.sheet_name or "Sheet1",
+        "notion_database_id":    config.notion_database_id or "",
+        "column_mappings":       config.column_mappings or [],
+        "id_column":             config.id_column or "",
         "sync_interval_minutes": config.sync_interval_minutes,
     }
 
@@ -352,6 +432,8 @@ async def save_config_route(body: SaveConfigRequest, user_id: str = Depends(get_
         config.notion_database_id = body.notion_database_id
     if body.column_mappings is not None:
         config.column_mappings = body.column_mappings
+    if body.id_column is not None:
+        config.id_column = body.id_column
     if body.sync_interval_minutes is not None:
         config.sync_interval_minutes = body.sync_interval_minutes
     await config.save()

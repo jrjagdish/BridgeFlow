@@ -1,3 +1,4 @@
+import uuid
 from tortoise.models import Model
 from tortoise import fields
 import os
@@ -77,7 +78,51 @@ class UserConfig(Model):
     sheet_name = fields.CharField(max_length=255, default="Sheet1")
     notion_database_id = fields.CharField(max_length=255, null=True)
     column_mappings = fields.JSONField(null=True)   # [{sheet_col, notion_property, type}]
+    id_column = fields.CharField(max_length=255, null=True)  # Sheet column used as unique row ID
     sync_interval_minutes = fields.IntField(default=5)
 
     class Meta:
         table = "user_configs"
+
+
+class SyncJob(Model):
+    """Tracks every sync run (manual or scheduled). Never deleted — full audit trail."""
+    id = fields.UUIDField(pk=True, default=uuid.uuid4)
+    user = fields.ForeignKeyField("models.User", related_name="sync_jobs")
+    status = fields.CharField(max_length=32, default="pending")
+    # pending | running | completed | completed_with_errors | failed
+    triggered_by = fields.CharField(max_length=32, default="manual")  # manual | scheduler
+    celery_task_id = fields.CharField(max_length=255, null=True)
+    started_at = fields.DatetimeField(null=True)
+    finished_at = fields.DatetimeField(null=True)
+    rows_fetched = fields.IntField(default=0)
+    rows_created = fields.IntField(default=0)
+    rows_updated = fields.IntField(default=0)
+    rows_skipped = fields.IntField(default=0)
+    errors = fields.JSONField(default=list)
+    created_at = fields.DatetimeField(auto_now_add=True)
+
+    class Meta:
+        table = "sync_jobs"
+
+
+class SyncedRow(Model):
+    """
+    Tracks every row that has been pushed to Notion.
+    row_hash detects changes so unchanged rows are never re-pushed.
+    Previous data is preserved even when errors occur — only error_message changes.
+    """
+    id = fields.UUIDField(pk=True, default=uuid.uuid4)
+    user = fields.ForeignKeyField("models.User", related_name="synced_rows")
+    row_id = fields.CharField(max_length=512)         # Value of id_column from Google Sheets
+    row_hash = fields.CharField(max_length=64)         # SHA-256 of row dict — detects changes
+    notion_page_id = fields.CharField(max_length=255)  # Notion page to update on next sync
+    last_synced_at = fields.DatetimeField(auto_now=True)
+    last_sync_job = fields.ForeignKeyField("models.SyncJob", related_name="synced_rows", null=True)
+    status = fields.CharField(max_length=32, default="synced")  # synced | error
+    error_message = fields.TextField(null=True)
+    created_at = fields.DatetimeField(auto_now_add=True)
+
+    class Meta:
+        table = "synced_rows"
+        unique_together = [("user", "row_id")]

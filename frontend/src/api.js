@@ -20,7 +20,7 @@ export async function getSyncStatus() {
 }
 
 export async function triggerSync() {
-  const res = await fetch('/sync/trigger', { method: 'GET', credentials: 'include' })
+  const res = await fetch('/sync/trigger', { method: 'POST', credentials: 'include' })
   if (!res.ok) throw new Error('Failed to trigger sync')
   return res.json()
 }

@@ -30,13 +30,11 @@
     -webkit-backdrop-filter: blur(24px);
   }
 
-  /* dark-mode card */
   .glass-card-dark {
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.08);
   }
 
-  /* light-mode card */
   .glass-card-light {
     background: rgba(255, 255, 255, 0.65);
     border: 1px solid rgba(139, 92, 246, 0.18);
@@ -97,5 +95,58 @@
            border border-violet-200 text-violet-700
            hover:bg-violet-50 hover:border-violet-300
            transition-all duration-200 active:scale-95;
+  }
+
+  /* ---------- scroll reveal ---------- */
+  .reveal {
+    opacity: 0;
+    transform: translateY(32px);
+    transition: opacity 0.65s ease, transform 0.65s ease;
+  }
+  .reveal.in-view {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .reveal-left {
+    opacity: 0;
+    transform: translateX(-32px);
+    transition: opacity 0.65s ease, transform 0.65s ease;
+  }
+  .reveal-left.in-view {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  .reveal-right {
+    opacity: 0;
+    transform: translateX(32px);
+    transition: opacity 0.65s ease, transform 0.65s ease;
+  }
+  .reveal-right.in-view {
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  /* stagger children delays */
+  .stagger > *:nth-child(1) { transition-delay: 0ms; }
+  .stagger > *:nth-child(2) { transition-delay: 100ms; }
+  .stagger > *:nth-child(3) { transition-delay: 200ms; }
+  .stagger > *:nth-child(4) { transition-delay: 300ms; }
+  .stagger > *:nth-child(5) { transition-delay: 400ms; }
+  .stagger > *:nth-child(6) { transition-delay: 500ms; }
+
+  /* ---------- shimmer card border ---------- */
+  .card-glow-dark:hover {
+    border-color: rgba(139, 92, 246, 0.35);
+    box-shadow: 0 0 32px rgba(139, 92, 246, 0.12);
+  }
+  .card-glow-light:hover {
+    border-color: rgba(139, 92, 246, 0.4);
+    box-shadow: 0 0 32px rgba(139, 92, 246, 0.1);
+  }
+
+  /* ---------- flow animation track ---------- */
+  .flow-track {
+    position: relative;
+    overflow: hidden;
   }
 }
