@@ -1,4 +1,7 @@
 annotated-doc==0.0.4
+asyncpg>=0.29.0
+celery[redis]>=5.3.6
+tortoise-orm>=0.21.0
 annotated-types==0.7.0
 anyio==4.13.0
 APScheduler==3.11.2

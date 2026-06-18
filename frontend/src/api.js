@@ -20,7 +20,7 @@ export async function getSyncStatus() {
 }
 
 export async function triggerSync() {
-  const res = await fetch('/sync/trigger', { method: 'GET', credentials: 'include' })
+  const res = await fetch('/sync/trigger', { method: 'POST', credentials: 'include' })
   if (!res.ok) throw new Error('Failed to trigger sync')
   return res.json()
 }
@@ -68,22 +68,18 @@ export async function fetchSheetPreview(spreadsheetId, sheetName = 'Sheet1') {
 // Notion — create a database with the given property schema
 // ---------------------------------------------------------------------------
 
-export async function createNotionDatabase({ parentPageId, title, properties }) {
+export async function createNotionDatabase({ title, properties }) {
   const res = await fetch('/notion/database', {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      parent_page_id: parentPageId,
-      title,
-      properties,
-    }),
+    body: JSON.stringify({ title, properties }),
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
     throw new Error(err.detail || 'Failed to create Notion database')
   }
-  return res.json()  // { database_id: string, url: string }
+  return res.json()  // { page_id: string, database_id: string, url: string }
 }
 
 // ---------------------------------------------------------------------------

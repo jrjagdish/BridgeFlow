@@ -40,3 +40,34 @@ async def fetch_sheet_preview(
         preview.append(dict(zip(headers, padded)))
 
     return headers, preview
+
+
+async def fetch_all_sheet_rows(
+    user_id: str,
+    spreadsheet_id: str,
+    sheet_name: str = "Sheet1",
+) -> tuple[list[str], list[dict]]:
+    """
+    Fetch every data row from a Google Sheet.
+    Returns (headers: list[str], rows: list[dict]) where each dict maps header → cell value.
+    """
+    token = await get_valid_access_token_for_user(user_id)
+    url = f"{SHEETS_API}/{spreadsheet_id}/values/{sheet_name}"
+    resp = requests.get(
+        url,
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=30,
+    )
+    resp.raise_for_status()
+
+    values = resp.json().get("values", [])
+    if not values:
+        return [], []
+
+    headers = values[0]
+    rows = []
+    for raw_row in values[1:]:
+        padded = raw_row + [""] * (len(headers) - len(raw_row))
+        rows.append(dict(zip(headers, padded)))
+
+    return headers, rows

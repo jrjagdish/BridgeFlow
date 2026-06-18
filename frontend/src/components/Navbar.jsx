@@ -1,20 +1,38 @@
 import ThemeToggle from './ThemeToggle'
 
-export default function Navbar({ isDark, toggleTheme, user, onLogout }) {
+export default function Navbar({ isDark, toggleTheme, user, onLogout, landingLinks }) {
   return (
     <nav className={`fixed top-0 inset-x-0 z-50 flex items-center justify-between px-6 py-4
       glass backdrop-blur-2xl border-b
       ${isDark ? 'border-white/[0.06] bg-black/20' : 'border-violet-100/60 bg-white/30'}`}>
 
       {/* Logo */}
-      <div className="flex items-center gap-2.5">
+      <a href="#" className="flex items-center gap-2.5">
         <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-500/30">
           <span className="text-white text-sm font-black">B</span>
         </div>
         <span className={`font-bold text-lg tracking-tight ${isDark ? 'text-white' : 'text-slate-800'}`}>
           Bridge<span className="text-gradient">Flow</span>
         </span>
-      </div>
+      </a>
+
+      {/* Landing nav links */}
+      {landingLinks && (
+        <div className="hidden sm:flex items-center gap-1">
+          {landingLinks.map(link => (
+            <a
+              key={link.href}
+              href={link.href}
+              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all duration-200
+                ${isDark
+                  ? 'text-slate-400 hover:text-white hover:bg-white/8'
+                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'}`}
+            >
+              {link.label}
+            </a>
+          ))}
+        </div>
+      )}
 
       {/* Right side */}
       <div className="flex items-center gap-4">
