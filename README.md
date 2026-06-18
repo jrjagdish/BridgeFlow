@@ -1,280 +1,384 @@
 # BridgeFlow – Google Sheets → Notion Sync
 
-BridgeFlow is a lightweight background service that automatically syncs data from Google Sheets to Notion.
+BridgeFlow is a multi-user web application that automatically syncs data from Google Sheets to Notion.
 
-It monitors a Google Sheet at regular intervals, detects new or modified rows, and mirrors those changes into a Notion database.
+Connect your Google account, connect your Notion workspace, configure your column mapping once, and BridgeFlow handles the rest — detecting new rows, detecting changes, and keeping your Notion database up to date on a configurable schedule.
 
-No manual copy-pasting, no third-party automation tools, and no recurring subscription costs.
+No manual copy-pasting. No third-party automation subscriptions. Self-hostable.
+
+---
+
+## What's New in V2
+
+| Feature | V1 | V2 |
+|---|---|---|
+| Users | Single user, tokens.json | Multi-user, PostgreSQL |
+| Auth | Manual token copy | Google OAuth + Notion OAuth |
+| Database | SQLite | Neon PostgreSQL (cloud) |
+| Scheduler | APScheduler (in-process) | Celery Beat (separate process) |
+| Job queue | None | Celery + Redis |
+| Job tracking | None | SyncJob audit trail |
+| Frontend | None | React + Vite |
+| Deployment | Local only | Docker + Vercel |
 
 ---
 
 ## Features
 
-### One-Way Synchronization
+### Multi-User OAuth
 
-Automatically reads rows from a Google Sheet and creates corresponding entries in a Notion database.
+Each user connects their own Google account and Notion workspace through a standard OAuth flow. Tokens are stored securely in PostgreSQL — never in files or browser storage.
 
 ### Smart Change Detection
 
-Uses a unique ID column to identify records.
+Uses a configurable ID column to identify rows.
 
-* Creates a new Notion page when a new ID appears.
-* Updates the existing Notion page when data for an existing ID changes.
+* Creates a new Notion page when a new row ID appears.
+* Updates the existing Notion page when row data changes (hash-based comparison — unchanged rows are skipped entirely).
+* Preserves previously synced data on error — only the error message is updated.
 * Prevents duplicate entries.
 
-### Background Processing
+### Background Processing with Celery
 
-Runs automatically on a configurable schedule and stores sync state in SQLite to track changes efficiently.
+Sync jobs run in a dedicated Celery worker process, separate from the API server. The Celery Beat scheduler dispatches auto-syncs on a configurable interval (default every 5 minutes).
+
+### Full Job Audit Trail
+
+Every sync run — manual or scheduled — is recorded as a `SyncJob` with:
+
+* Status (`pending`, `running`, `completed`, `completed_with_errors`, `failed`)
+* Row counts (fetched, created, updated, skipped)
+* Error list per failed row
+* Timestamps (started, finished)
+
+### Live Job Streaming
+
+Poll or stream the status of a running sync job via Server-Sent Events.
 
 ### Configurable Column Mapping
 
-Map Google Sheet columns to any Notion database properties through a simple configuration file.
+Map any Google Sheet column to any Notion property with type support for `title`, `rich_text`, `number`, `select`, `date`, `checkbox`, and `url`.
 
-### Manual Sync Trigger
+### React Frontend
 
-Trigger synchronization instantly through an API endpoint without waiting for the next scheduled run.
-
----
-
-# Tech Stack
-
-* FastAPI
-* APScheduler
-* SQLite
-* Google Sheets API
-* Notion API
-* Python
+A web UI for connecting accounts, configuring the sync, previewing sheet data, creating Notion databases, and triggering syncs.
 
 ---
 
-# Installation
+## Tech Stack
 
-## 1. Clone the Repository
+* **FastAPI** — API server
+* **Tortoise ORM + asyncpg** — async database layer
+* **Neon PostgreSQL** — cloud Postgres (or any Postgres)
+* **Celery + Redis** — background job queue and beat scheduler
+* **React + Vite** — frontend
+* **Docker + Docker Compose** — containerised deployment
+* **Vercel** — serverless deployment for API + frontend
+
+---
+
+## Project Structure
+
+```text
+bridgeflow/
+│
+├── main.py                  # FastAPI app, all routes
+├── debug.py                 # Shared logger
+├── requirements.txt
+├── requirements-dev.txt     # pytest, pytest-asyncio, httpx
+├── pytest.ini
+├── Dockerfile               # Python API image
+├── docker-compose.yml       # API + frontend + worker + beat
+├── vercel.json              # Vercel routing config
+├── .env                     # Local environment variables
+│
+├── v2/
+│   ├── auth.py              # HTTP-only session cookie helpers
+│   ├── oauth.py             # Google OAuth — token exchange + refresh
+│   ├── notion_oauth.py      # Notion OAuth — token exchange
+│   ├── models.py            # Tortoise ORM models + DB config
+│   ├── sheets_service.py    # Google Sheets API calls
+│   ├── notion_service.py    # Notion API calls
+│   ├── celery_app.py        # Celery app + Beat schedule
+│   └── tasks.py             # sync_user + dispatch_all_syncs tasks
+│
+├── frontend/
+│   ├── package.json
+│   ├── vite.config.js
+│   └── src/
+│       ├── main.jsx
+│       ├── components/
+│       └── hooks/
+│
+└── tests/
+    └── test_routes.py       # Unit tests for all routes (mocked DB)
+```
+
+---
+
+## Installation
+
+### 1. Clone the Repository
 
 ```bash
 git clone https://github.com/your-username/bridgeflow.git
 cd bridgeflow
 ```
 
-## 2. Install Dependencies
+### 2. Create a Virtual Environment
+
+```bash
+python -m venv venv
+source venv/bin/activate      # Windows: venv\Scripts\activate
+```
+
+### 3. Install Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
----
+### 4. Install Frontend Dependencies
 
-# Configuration
-
-## config.json
-
-Create a `config.json` file in the project root.
-
-```json
-{
-  "google": {
-    "spreadsheet_id": "YOUR_GOOGLE_SHEET_ID",
-    "sheet_name": "Tasks",
-    "id_column": "ID"
-  },
-  "notion": {
-    "database_id": "YOUR_NOTION_DATABASE_ID"
-  },
-  "column_mapping": {
-    "ID": {
-      "notion_property": "Task ID",
-      "type": "rich_text"
-    },
-    "Task Name": {
-      "notion_property": "Name",
-      "type": "title"
-    },
-    "Status": {
-      "notion_property": "Status",
-      "type": "select"
-    },
-    "Due Date": {
-      "notion_property": "Due Date",
-      "type": "date"
-    }
-  },
-  "sync_interval_minutes": 5
-}
+```bash
+cd frontend && npm install && cd ..
 ```
 
-### Notes
-
-* Google Sheet column names are case-sensitive.
-* Notion property names must exactly match your database schema.
-* The ID column should contain unique values.
-
 ---
 
-# Environment Variables
+## Environment Variables
 
-Create a `.env` file in the root directory.
+Create a `.env` file in the project root:
 
 ```env
-GOOGLE_CLIENT_ID=your_google_client_id
-GOOGLE_CLIENT_SECRET=your_google_client_secret
-GOOGLE_REDIRECT_URI=http://localhost:8000/oauth/callback
+# Google OAuth
+CLIENT_ID=your_google_client_id
+CLIENT_SECRET=your_google_client_secret
+GOOGLE_REDIRECT_URI=http://localhost:5173/oauth/callback
 
-NOTION_TOKEN=your_notion_internal_integration_token
+# Notion OAuth
+NOTION_CLIENT_ID=your_notion_client_id
+NOTION_CLIENT_SECRET=your_notion_client_secret
+NOTION_REDIRECT_URI=http://localhost:5173/oauth/notion/callback
+
+# Database (Neon PostgreSQL or any Postgres)
+DATABASE_URL=postgresql://user:password@host/dbname?ssl=require
+
+# Redis (Upstash or local)
+REDIS_URL=redis://localhost:6379/0
+
+# Frontend URL (used for OAuth redirects)
+FRONTEND_URL=http://localhost:5173
 ```
 
 ---
 
-# Running the Application
+## Running Locally
 
-Start the FastAPI server:
+BridgeFlow requires three processes running simultaneously.
+
+### Terminal 1 — API Server
 
 ```bash
 uvicorn main:app --reload
 ```
 
-The application will be available at:
+### Terminal 2 — Celery Worker
 
-```text
-http://localhost:8000
+```bash
+# Windows
+celery -A v2.celery_app worker --loglevel=info -P solo
+
+# Linux / Mac
+celery -A v2.celery_app worker --loglevel=info
 ```
 
----
+### Terminal 3 — Celery Beat Scheduler
 
-# API Endpoints
-
-## Connect Google Account
-
-### GET /oauth/start
-
-```text
-http://localhost:8000/oauth/start
+```bash
+celery -A v2.celery_app beat --loglevel=info
 ```
 
-Redirects the user to Google's authorization page.
+### Terminal 4 — Frontend
 
-After successful authentication, BridgeFlow stores OAuth tokens locally, allowing future sync operations without requiring repeated logins.
-
----
-
-## Check Application Status
-
-### GET /status
-
-```text
-http://localhost:8000/status
+```bash
+cd frontend && npm run dev
 ```
 
-Returns:
-
-* Application health status
-* Recent sync activity
-* Number of records processed
-* Sync statistics
+Open `http://localhost:5173` in your browser.
 
 ---
 
-## Trigger Manual Synchronization
+## Running with Docker
 
-### GET /sync/trigger
+Start all four processes with a single command:
 
-```text
-http://localhost:8000/sync/trigger
+```bash
+docker compose up --build
 ```
 
-Forces an immediate synchronization between Google Sheets and Notion.
-
-Useful for testing and verification.
-
----
-
-# Synchronization Workflow
-
-1. Read rows from Google Sheets.
-2. Identify each row using the configured ID column.
-3. Compare current data with previously synced data stored in SQLite.
-4. Create a new Notion page if the ID does not exist.
-5. Update the existing Notion page if changes are detected.
-6. Save the latest sync state locally.
+| Service | URL |
+|---|---|
+| Frontend (Vite dev) | http://localhost:5173 |
+| API (FastAPI) | http://localhost:8000 |
 
 ---
 
-# Project Structure
+## Deploying to Vercel
 
-```text
-bridgeflow/
-│
-├── main.py
-├── scheduler.py
-├── notion_client.py
-├── google_client.py
-├── sync_service.py
-├── database.db
-├── config.json
-├── .env
-├── tokens.json
-│
-└── README.md
+### 1. Push to GitHub
+
+### 2. Import into Vercel
+
+Connect your GitHub repository. Vercel uses `vercel.json` — no additional configuration needed in the Vercel dashboard.
+
+### 3. Set Environment Variables in Vercel
+
+| Variable | Production value |
+|---|---|
+| `CLIENT_ID` | Google OAuth client ID |
+| `CLIENT_SECRET` | Google OAuth client secret |
+| `GOOGLE_REDIRECT_URI` | `https://your-app.vercel.app/oauth/callback` |
+| `NOTION_CLIENT_ID` | Notion OAuth client ID |
+| `NOTION_CLIENT_SECRET` | Notion OAuth client secret |
+| `NOTION_REDIRECT_URI` | `https://your-app.vercel.app/oauth/notion/callback` |
+| `DATABASE_URL` | Neon PostgreSQL connection string |
+| `REDIS_URL` | Upstash Redis URL |
+| `FRONTEND_URL` | `https://your-app.vercel.app` |
+
+### 4. Register Redirect URIs
+
+**Google Cloud Console** → APIs & Services → Credentials → your OAuth Client:
+```
+https://your-app.vercel.app/oauth/callback
 ```
 
----
-
-# Important Rules
-
-## Unique IDs Required
-
-Every row must contain a unique identifier.
-
-Example:
-
-```text
-T001
-T002
-T003
+**Notion integration settings**:
+```
+https://your-app.vercel.app/oauth/notion/callback
 ```
 
-Rows without an ID will be skipped during synchronization.
+> **Note:** Vercel hosts the API and frontend. Celery worker and beat cannot run on Vercel (serverless). For auto-sync in production, deploy the worker and beat separately (Railway, Fly.io, or any VPS using `docker compose up worker beat`).
 
 ---
 
-## Supported Date Format
+## API Reference
 
-Dates must use the ISO format:
+### Auth
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/oauth/start` | Returns Google consent URL |
+| `GET` | `/oauth/callback` | Google OAuth callback — sets session cookie |
+| `GET` | `/oauth/notion/start` | Returns Notion consent URL |
+| `GET` | `/oauth/notion/callback` | Notion OAuth callback |
+| `GET` | `/me` | Current user profile |
+| `POST` | `/logout` | Clear session cookie |
+| `POST` | `/oauth/notion/disconnect` | Remove Notion token |
+
+### Sync
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/sync/trigger` | Manually trigger a sync |
+| `GET` | `/sync/jobs` | List recent sync jobs |
+| `GET` | `/sync/jobs/{job_id}` | Get a single sync job |
+| `GET` | `/sync/jobs/{job_id}/stream` | SSE stream — live job status |
+| `GET` | `/sync/rows` | Audit trail of all synced rows |
+| `GET` | `/status` | Last trigger time + active job count |
+
+### Configuration
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/config` | Load saved sync configuration |
+| `POST` | `/config` | Save sync configuration |
+| `POST` | `/sheets/preview` | Preview sheet headers and first rows |
+| `POST` | `/notion/page` | Create a Notion page |
+| `POST` | `/notion/database` | Create a Notion database with a property schema |
+
+---
+
+## Configuration Reference
+
+`POST /config` accepts:
+
+```json
+{
+  "spreadsheet_id": "your_google_sheet_id",
+  "sheet_name": "Sheet1",
+  "notion_database_id": "your_notion_database_id",
+  "id_column": "ID",
+  "column_mappings": [
+    { "sheet_col": "ID",        "notion_property": "Task ID",  "type": "rich_text" },
+    { "sheet_col": "Task Name", "notion_property": "Name",     "type": "title"     },
+    { "sheet_col": "Status",    "notion_property": "Status",   "type": "select"    },
+    { "sheet_col": "Due Date",  "notion_property": "Due Date", "type": "date"      }
+  ],
+  "sync_interval_minutes": 5
+}
+```
+
+### Supported Notion Property Types
+
+| Type | Notion property |
+|---|---|
+| `title` | Title (required — one per database) |
+| `rich_text` | Text |
+| `number` | Number |
+| `select` | Select |
+| `date` | Date |
+| `checkbox` | Checkbox |
+| `url` | URL |
+
+---
+
+## Sync Rules
+
+### Unique ID Required
+
+Every row must have a non-empty value in the configured `id_column`. Rows without an ID are skipped and logged as errors.
+
+### Date Format
+
+Dates must be in ISO format:
 
 ```text
 YYYY-MM-DD
 ```
 
-Example:
+### Notion Character Limit
 
-```text
-2026-06-06
+Notion text properties have a 2,000-character limit. Values exceeding this are automatically truncated.
+
+### First Sync Must Be Manual
+
+Auto-sync via the scheduler only starts after the user has completed at least one successful manual sync. This prevents unintended background activity on misconfigured accounts.
+
+---
+
+## Running Tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest
 ```
 
----
-
-## Notion Character Limit
-
-Notion text properties have a maximum limit of 2,000 characters.
-
-BridgeFlow automatically truncates values exceeding this limit to prevent synchronization failures.
+Tests cover all routes with a fully mocked database — no real PostgreSQL or Redis required.
 
 ---
 
-# Future Improvements
+## Logs
 
-* Two-way synchronization
-* Real-time webhook support
-* Multiple sheet support
-* Conflict resolution system
-* Docker deployment
-* User dashboard
-* Email notifications
-* Sync history analytics
+| File | Contains |
+|---|---|
+| `logs/bridgeflow.log` | All log messages (DEBUG and above) |
+| `logs/bridgeflow_errors.log` | Errors only |
+
+Console output shows INFO and above. Set `LOG_DIR` environment variable to change the log directory.
 
 ---
 
-# License
+## License
 
-MIT License
-
-Feel free to use, modify, and distribute this project.
+MIT License. Free to use, modify, and distribute.
