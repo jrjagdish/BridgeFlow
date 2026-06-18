@@ -1,0 +1,53 @@
+version: "3.9"
+
+# All Python processes share the same image; different commands select the role.
+# The frontend runs its own Node image with hot-reload via Vite dev server.
+# Env vars are read from .env — never baked into images.
+
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file: .env
+    volumes:
+      - logs:/app/logs
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    ports:
+      - "5173:5173"
+    environment:
+      - API_URL=http://api:8000   # Vite proxy target — uses Docker service name
+    volumes:
+      - ./frontend:/app           # live-reload: your local edits sync into the container
+      - /app/node_modules         # keep the container's node_modules, don't overwrite
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  worker:
+    build: .
+    command: celery -A v2.celery_app worker --loglevel=info
+    env_file: .env
+    volumes:
+      - logs:/app/logs
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  beat:
+    build: .
+    command: celery -A v2.celery_app beat --loglevel=info
+    env_file: .env
+    volumes:
+      - logs:/app/logs
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  logs:

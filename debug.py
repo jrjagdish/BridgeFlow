@@ -1,16 +1,25 @@
 import logging
 import os
 
-os.makedirs("logs",exist_ok=True)
+os.makedirs("logs", exist_ok=True)
+
 logger = logging.getLogger("vault")
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 logger.propagate = False
 
-log_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-console_handler = logging.StreamHandler()
-console_handler.setFormatter(log_formatter)
-logger.addHandler(console_handler)
+_fmt = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
-file_handler = logging.FileHandler("logs/bridgeflow.log")
-file_handler.setFormatter(log_formatter)
-logger.addHandler(file_handler)
+_console = logging.StreamHandler()
+_console.setLevel(logging.INFO)
+_console.setFormatter(_fmt)
+logger.addHandler(_console)
+
+_file = logging.FileHandler("logs/bridgeflow.log")
+_file.setLevel(logging.DEBUG)
+_file.setFormatter(_fmt)
+logger.addHandler(_file)
+
+_errors = logging.FileHandler("logs/bridgeflow_errors.log")
+_errors.setLevel(logging.ERROR)
+_errors.setFormatter(_fmt)
+logger.addHandler(_errors)

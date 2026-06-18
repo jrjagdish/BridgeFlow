@@ -32,7 +32,7 @@ def set_session_cookie(response: Response, user_id: str) -> None:
         max_age=COOKIE_MAX_AGE,
         httponly=True,
         samesite="lax",
-        secure=False,   # TODO: set True in production (HTTPS only)
+        secure=True,   # TODO: set True in production (HTTPS only)
     )
 
 
