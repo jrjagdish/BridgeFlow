@@ -1,11 +1,5 @@
 {
   "version": 2,
-  "crons": [
-    {
-      "path": "/cron/sync",
-      "schedule": "*/5 * * * *"
-    }
-  ],
   "builds": [
     {
       "src": "main.py",
