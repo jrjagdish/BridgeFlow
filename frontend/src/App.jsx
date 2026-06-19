@@ -2,7 +2,11 @@ import { useState, useEffect, useCallback } from 'react'
 import { useTheme } from './hooks/useTheme'
 import Landing from './pages/Landing'
 import Dashboard from './pages/Dashboard'
+import PrivacyPolicy from './pages/PrivacyPolicy'
+import TermsOfService from './pages/TermsOfService'
 import { getMe } from './api'
+
+const path = window.location.pathname
 
 export default function App() {
   const { theme, toggle, isDark } = useTheme()
@@ -21,6 +25,9 @@ export default function App() {
   }, [])
 
   const bgClass = isDark ? 'bg-mesh-dark text-slate-100' : 'bg-mesh-light text-slate-800'
+
+  if (path === '/policy') return <PrivacyPolicy />
+  if (path === '/terms') return <TermsOfService />
 
   if (checking) {
     return (

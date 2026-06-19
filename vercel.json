@@ -1,5 +1,11 @@
 {
   "version": 2,
+  "crons": [
+    {
+      "path": "/cron/sync",
+      "schedule": "*/5 * * * *"
+    }
+  ],
   "builds": [
     {
       "src": "main.py",
@@ -20,6 +26,7 @@
     { "src": "/status",       "dest": "/main.py" },
     { "src": "/logout",       "dest": "/main.py" },
     { "src": "/sync/(.*)",    "dest": "/main.py" },
+    { "src": "/cron/(.*)",   "dest": "/main.py" },
     { "src": "/docs(.*)",     "dest": "/main.py" },
     { "src": "/openapi.json", "dest": "/main.py" },
     

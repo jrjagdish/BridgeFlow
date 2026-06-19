@@ -51,8 +51,9 @@ def _row_hash(row: dict) -> str:
 # Core sync logic (async — runs inside asyncio.run())
 # ---------------------------------------------------------------------------
 
-async def _do_sync(user_id: str, sync_job_id: str):
-    await _init_db()
+async def _do_sync(user_id: str, sync_job_id: str, manage_db: bool = True):
+    if manage_db:
+        await _init_db()
     try:
         from v2.models import UserConfig, SyncJob, SyncedRow
         from v2.sheets_service import fetch_all_sheet_rows
@@ -193,7 +194,65 @@ async def _do_sync(user_id: str, sync_job_id: str):
             f"updated={rows_updated} skipped={rows_skipped} errors={len(errors)}"
         )
     finally:
-        await _close_db()
+        if manage_db:
+            await _close_db()
+
+
+# ---------------------------------------------------------------------------
+# Standalone async dispatcher (used by the /cron/sync endpoint on Vercel)
+# ---------------------------------------------------------------------------
+
+async def dispatch_all_syncs_async():
+    """
+    Dispatch syncs for all eligible users without Celery.
+    Runs each user's sync concurrently via asyncio.gather.
+    Call this from a FastAPI route (Tortoise already connected — manage_db=False).
+    """
+    from v2.models import UserConfig, SyncJob
+    from datetime import datetime, timezone, timedelta
+    import uuid as uuid_mod
+
+    stale_cutoff = datetime.now(timezone.utc) - timedelta(minutes=30)
+    stale_jobs = await SyncJob.filter(
+        status__in=["pending", "running"],
+        created_at__lt=stale_cutoff,
+    )
+    for stale in stale_jobs:
+        stale.status = "failed"
+        stale.errors = ["Marked failed — job was stuck for >30 minutes"]
+        stale.finished_at = datetime.now(timezone.utc)
+        await stale.save()
+        logger.warning(f"[cron] Marked stale job {stale.id} as failed")
+
+    configs = await UserConfig.all().prefetch_related("user")
+    logger.info(f"[cron] Checking {len(configs)} user config(s)")
+    sync_tasks = []
+    for config in configs:
+        user = config.user
+        if not config.spreadsheet_id or not config.notion_database_id or not config.column_mappings:
+            continue
+        has_completed = await SyncJob.filter(
+            user_id=user.id, status__in=["completed", "completed_with_errors"]
+        ).exists()
+        if not has_completed:
+            continue
+        already_running = await SyncJob.filter(
+            user_id=user.id, status__in=["pending", "running"]
+        ).exists()
+        if already_running:
+            continue
+        job = await SyncJob.create(
+            id=uuid_mod.uuid4(),
+            user_id=user.id,
+            status="pending",
+            triggered_by="scheduler",
+        )
+        logger.info(f"[cron] Queuing sync for {user.email} job={job.id}")
+        sync_tasks.append(_do_sync(str(user.id), str(job.id), manage_db=False))
+
+    if sync_tasks:
+        await asyncio.gather(*sync_tasks, return_exceptions=True)
+    logger.info(f"[cron] dispatch_all_syncs_async done — {len(sync_tasks)} job(s) started")
 
 
 # ---------------------------------------------------------------------------
