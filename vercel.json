@@ -24,7 +24,7 @@
     { "source": "/docs(.*)",     "destination": "/main.py" },
     { "source": "/openapi.json", "destination": "/main.py" },
     
-    { "source": "/assets/(.*)",   "destination": "/assets/$1" },
+    { "source": "/assets/(.*)",   "destination": "frontend/assets/$1" },
     
     { "source": "/(.*)",          "destination": "frontend/index.html" }
   ]
