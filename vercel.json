@@ -12,21 +12,19 @@
     }
   ],
   "routes": [
-    { "src": "/oauth/(.*)",   "dest": "/main.py" },
-    { "src": "/notion/(.*)",  "dest": "/main.py" },
-    { "src": "/sheets/(.*)",  "dest": "/main.py" },
-    { "src": "/config",       "dest": "/main.py" },
-    { "src": "/me",           "dest": "/main.py" },
-    { "src": "/status",       "dest": "/main.py" },
-    { "src": "/logout",       "dest": "/main.py" },
-    { "src": "/sync/(.*)",    "dest": "/main.py" },
-    { "src": "/cron/(.*)",   "dest": "/main.py" },
-    { "src": "/docs(.*)",     "dest": "/main.py" },
-    { "src": "/openapi.json", "dest": "/main.py" },
-    
+    { "src": "/api/inngest",   "dest": "/main.py" },
+    { "src": "/oauth/(.*)",    "dest": "/main.py" },
+    { "src": "/notion/(.*)",   "dest": "/main.py" },
+    { "src": "/sheets/(.*)",   "dest": "/main.py" },
+    { "src": "/sync/(.*)",     "dest": "/main.py" },
+    { "src": "/cron/(.*)",     "dest": "/main.py" },
+    { "src": "/config",        "dest": "/main.py" },
+    { "src": "/me",            "dest": "/main.py" },
+    { "src": "/status",        "dest": "/main.py" },
+    { "src": "/logout",        "dest": "/main.py" },
+    { "src": "/docs(.*)",      "dest": "/main.py" },
+    { "src": "/openapi.json",  "dest": "/main.py" },
     { "handle": "filesystem" },
-    
-    { "src": "/assets/(.*)",  "dest": "/frontend/assets/$1" },
-    { "src": "/(.*)",         "dest": "/frontend/index.html" }
+    { "src": "/(.*)",          "dest": "/index.html" }
   ]
 }
