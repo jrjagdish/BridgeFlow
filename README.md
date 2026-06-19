@@ -381,4 +381,4 @@ Console output shows INFO and above. Set `LOG_DIR` environment variable to chang
 
 ## License
 
-MIT License. Free to use, modify, and distribute.
+MIT License. Free to use, modify, and distribute.  
