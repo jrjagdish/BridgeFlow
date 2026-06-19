@@ -24,10 +24,8 @@
     { "src": "/cron/(.*)",   "dest": "/main.py" },
     { "src": "/docs(.*)",     "dest": "/main.py" },
     { "src": "/openapi.json", "dest": "/main.py" },
-    
     { "handle": "filesystem" },
-    
-    { "src": "/assets/(.*)",  "dest": "/frontend/assets/$1" },
-    { "src": "/(.*)",         "dest": "/frontend/index.html" }
+    { "src": "/",             "dest": "/index.html" },
+    { "src": "/(.*)",         "dest": "/index.html" }
   ]
 }
