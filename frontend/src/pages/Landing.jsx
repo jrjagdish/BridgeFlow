@@ -626,14 +626,19 @@ export default function Landing({ isDark, toggleTheme }) {
             © 2025 BridgeFlow · Open source · Built with FastAPI + React
           </p>
           <div className="flex items-center gap-6">
-            {['Features', 'Pricing'].map(link => (
+            {[
+              { label: 'Features', href: '#features' },
+              { label: 'Pricing', href: '#pricing' },
+              { label: 'Privacy Policy', href: '/policy' },
+              { label: 'Terms', href: '/terms' },
+            ].map(link => (
               <a
-                key={link}
-                href={`#${link.toLowerCase()}`}
+                key={link.label}
+                href={link.href}
                 className={`text-xs hover:text-violet-500 transition-colors
                   ${isDark ? 'text-slate-500' : 'text-slate-400'}`}
               >
-                {link}
+                {link.label}
               </a>
             ))}
           </div>

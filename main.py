@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.responses import Response, RedirectResponse, StreamingResponse
 from pydantic import BaseModel
 from typing import Optional, List
@@ -183,7 +183,7 @@ async def notion_disconnect(user_id: str = Depends(get_current_user_id)):
 @app.post("/sync/trigger")
 async def trigger_sync(user_id: str = Depends(get_current_user_id)):
     from v2.models import SyncJob
-    from v2.tasks import sync_user
+    from v2.tasks import _do_sync
     try:
         job = await SyncJob.create(
             id=uuid.uuid4(),
@@ -191,14 +191,30 @@ async def trigger_sync(user_id: str = Depends(get_current_user_id)):
             status="pending",
             triggered_by="manual",
         )
-        task = sync_user.apply_async(args=[str(user_id), str(job.id)])
-        job.celery_task_id = task.id
-        await job.save()
-        logger.info(f"[sync] Manual trigger user={user_id} job={job.id} celery={task.id}")
-        return {"job_id": str(job.id), "celery_task_id": task.id, "status": "pending"}
+        logger.info(f"[sync] Manual trigger user={user_id} job={job.id}")
+        await _do_sync(str(user_id), str(job.id), manage_db=False)
+        await job.refresh_from_db()
+        return {"job_id": str(job.id), "status": job.status}
     except Exception as e:
         logger.error(f"[sync] Trigger failed for user {user_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to trigger sync")
+
+
+@app.get("/cron/sync")
+async def cron_sync(request: Request):
+    """Called by Vercel Cron every 5 minutes to dispatch scheduled syncs."""
+    cron_secret = os.getenv("CRON_SECRET", "")
+    if cron_secret:
+        auth = request.headers.get("authorization", "")
+        if auth != f"Bearer {cron_secret}":
+            raise HTTPException(status_code=401, detail="Unauthorized")
+    from v2.tasks import dispatch_all_syncs_async
+    try:
+        await dispatch_all_syncs_async()
+        return {"status": "ok"}
+    except Exception as e:
+        logger.error(f"[cron] dispatch failed: {e}")
+        raise HTTPException(status_code=500, detail="Cron dispatch failed")
 
 
 @app.get("/sync/jobs")
