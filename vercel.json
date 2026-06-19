@@ -25,6 +25,6 @@
     { "src": "/docs(.*)",      "dest": "/main.py" },
     { "src": "/openapi.json",  "dest": "/main.py" },
     { "handle": "filesystem" },
-    { "src": "/(.*)",          "dest": "/index.html" }
+    { "src": "/(.*)",          "dest": "frontend/index.html" }
   ]
 }
