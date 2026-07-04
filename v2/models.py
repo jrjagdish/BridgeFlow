@@ -106,6 +106,17 @@ class SyncJob(Model):
         table = "sync_jobs"
 
 
+class Feedback(Model):
+    """Freeform feedback submitted by a user via the in-app feedback widget."""
+    id = fields.UUIDField(pk=True, default=uuid.uuid4)
+    user = fields.ForeignKeyField("models.User", related_name="feedback")
+    message = fields.TextField()
+    created_at = fields.DatetimeField(auto_now_add=True)
+
+    class Meta:
+        table = "feedback"
+
+
 class SyncedRow(Model):
     """
     Tracks every row that has been pushed to Notion.

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import Navbar from '../components/Navbar'
 import StatusBadge from '../components/StatusBadge'
 import SyncLogs from '../components/SyncLogs'
+import FeedbackWidget from '../components/FeedbackWidget'
 import Settings from './Settings'
 import Setup from './Setup'
 import { logout, triggerSync, getNotionOAuthUrl, disconnectNotion } from '../api'
@@ -34,7 +35,8 @@ function NavItem({ icon, label, active, onClick, isDark }) {
 // ---------------------------------------------------------------------------
 function StatCard({ label, value, sub, accent, isDark }) {
   return (
-    <div className={`glass rounded-2xl p-5 ${isDark ? 'glass-card-dark' : 'glass-card-light'}`}>
+    <div className={`glass rounded-2xl p-5 transition-all duration-200
+      ${isDark ? 'glass-card-dark card-glow-dark' : 'glass-card-light card-glow-light'}`}>
       <p className={`text-xs font-semibold uppercase tracking-wider mb-2 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
         {label}
       </p>
@@ -49,7 +51,8 @@ function StatCard({ label, value, sub, accent, isDark }) {
 // ---------------------------------------------------------------------------
 function ServiceCard({ icon, name, connected, detail, onConnect, connecting, connectErr, onDisconnect, disconnecting, isDark }) {
   return (
-    <div className={`glass rounded-2xl p-5 ${isDark ? 'glass-card-dark' : 'glass-card-light'}`}>
+    <div className={`glass rounded-2xl p-5 transition-all duration-200
+      ${isDark ? 'glass-card-dark card-glow-dark' : 'glass-card-light card-glow-light'}`}>
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-xl shrink-0
@@ -177,6 +180,7 @@ export default function Dashboard({ user, isDark, toggleTheme, onLogout, onUserR
         ${isDark ? 'bg-indigo-900/30' : 'bg-indigo-200/40'} animate-float`} />
 
       <Navbar isDark={isDark} toggleTheme={toggleTheme} user={user} onLogout={handleLogout} />
+      <FeedbackWidget isDark={isDark} />
 
       <div className="flex pt-16 min-h-screen">
 
@@ -364,7 +368,8 @@ export default function Dashboard({ user, isDark, toggleTheme, onLogout, onUserR
                   ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
                   Recent Sync Runs
                 </p>
-                <div className={`glass rounded-2xl p-6 ${isDark ? 'glass-card-dark' : 'glass-card-light'}`}>
+                <div className={`glass rounded-2xl p-6 transition-all duration-200
+                  ${isDark ? 'glass-card-dark card-glow-dark' : 'glass-card-light card-glow-light'}`}>
                   <SyncLogs isDark={isDark} />
                 </div>
               </div>

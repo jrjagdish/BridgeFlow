@@ -92,6 +92,24 @@ export async function getConfig() {
   return res.json()
 }
 
+// ---------------------------------------------------------------------------
+// Feedback
+// ---------------------------------------------------------------------------
+
+export async function sendFeedback(message) {
+  const res = await fetch('/feedback', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || 'Failed to send feedback')
+  }
+  return res.json()
+}
+
 export async function saveConfig(config) {
   const res = await fetch('/config', {
     method: 'POST',

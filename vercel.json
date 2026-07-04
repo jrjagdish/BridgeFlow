@@ -20,6 +20,7 @@
     { "source": "/status",        "destination": "/main.py" },
     { "source": "/logout",        "destination": "/main.py" },
     { "source": "/sync/(.*)",     "destination": "/main.py" },
+    { "source": "/feedback",      "destination": "/main.py" },
     { "source": "/api/inngest",   "destination": "/main.py" },
     { "source": "/docs(.*)",     "destination": "/main.py" },
     { "source": "/openapi.json", "destination": "/main.py" },

@@ -52,6 +52,10 @@ class SaveConfigRequest(BaseModel):
     id_column: Optional[str] = None
     sync_interval_minutes: Optional[int] = None
 
+
+class FeedbackRequest(BaseModel):
+    message: str
+
 load_dotenv()
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
@@ -206,6 +210,27 @@ async def trigger_sync(user_id: str = Depends(get_current_user_id)):
     except Exception as e:
         logger.error(f"[sync] Trigger failed for user {user_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to trigger sync")
+
+
+# ---------------------------------------------------------------------------
+# Feedback route
+# ---------------------------------------------------------------------------
+
+@app.post("/feedback")
+async def submit_feedback(body: FeedbackRequest, user_id: str = Depends(get_current_user_id)):
+    from v2.models import Feedback
+    message = body.message.strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="Feedback message cannot be empty")
+    if len(message) > 2000:
+        raise HTTPException(status_code=400, detail="Feedback message is too long (max 2000 characters)")
+    try:
+        await Feedback.create(id=uuid.uuid4(), user_id=user_id, message=message)
+        logger.info(f"[feedback] Received feedback from user {user_id}")
+        return {"status": "ok"}
+    except Exception as e:
+        logger.error(f"[feedback] Failed to save feedback for user {user_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to submit feedback")
 
 
 @app.get("/sync/jobs")

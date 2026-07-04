@@ -53,8 +53,8 @@ function Select({ value, onChange, options, isDark }) {
 
 function SectionCard({ title, desc, children, isDark }) {
   return (
-    <div className={`glass rounded-2xl p-6 space-y-5
-      ${isDark ? 'glass-card-dark' : 'glass-card-light'}`}>
+    <div className={`glass rounded-2xl p-6 space-y-5 transition-all duration-200
+      ${isDark ? 'glass-card-dark card-glow-dark' : 'glass-card-light card-glow-light'}`}>
       <div>
         <h3 className={`font-semibold text-base ${isDark ? 'text-white' : 'text-slate-800'}`}>{title}</h3>
         {desc && <p className={`text-xs mt-0.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{desc}</p>}

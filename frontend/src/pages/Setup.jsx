@@ -77,7 +77,8 @@ function StepHeader({ n, label, sub, active, done, isDark }) {
 
 function Card({ children, isDark }) {
   return (
-    <div className={`glass rounded-2xl p-6 ${isDark ? 'glass-card-dark' : 'glass-card-light'}`}>
+    <div className={`glass rounded-2xl p-6 transition-all duration-200
+      ${isDark ? 'glass-card-dark card-glow-dark' : 'glass-card-light card-glow-light'}`}>
       {children}
     </div>
   )
