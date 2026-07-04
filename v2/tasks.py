@@ -1,36 +1,23 @@
 """
-v2/tasks.py — Celery tasks for Google Sheets -> Notion sync.
+v2/tasks.py — Google Sheets -> Notion sync logic.
 
-Each task uses asyncio.run() because Tortoise ORM is async but Celery workers
-are synchronous by default. Every task call gets a fresh event loop with its
-own Tortoise connection pool, which is closed in the finally block.
-
-Running the worker:
-  celery -A v2.celery_app worker --loglevel=info -P solo   (Windows dev)
-  celery -A v2.celery_app worker --loglevel=info            (Linux / prod)
-
-Running the beat scheduler:
-  celery -A v2.celery_app beat --loglevel=info
+`_do_sync` is called directly (in-process) from the FastAPI request handler
+for manual syncs, and from the Inngest scheduled function (v2/inngest_functions.py)
+for time-based auto-syncs. No background worker process is needed.
 """
 
 import asyncio
 import hashlib
 import json
 import uuid as uuid_mod
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 from debug import logger
-from v2.celery_app import celery_app
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _run(coro):
-    """Run an async coroutine from a synchronous Celery task."""
-    return asyncio.run(coro)
-
 
 async def _init_db():
     from tortoise import Tortoise
@@ -48,7 +35,7 @@ def _row_hash(row: dict) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Core sync logic (async — runs inside asyncio.run())
+# Core sync logic
 # ---------------------------------------------------------------------------
 
 async def _do_sync(user_id: str, sync_job_id: str, manage_db: bool = True):
@@ -199,14 +186,15 @@ async def _do_sync(user_id: str, sync_job_id: str, manage_db: bool = True):
 
 
 # ---------------------------------------------------------------------------
-# Standalone async dispatcher (used by the /cron/sync endpoint on Vercel)
+# Standalone async dispatcher (called every 5 min by the Inngest scheduled
+# function in v2/inngest_functions.py)
 # ---------------------------------------------------------------------------
 
 async def dispatch_all_syncs_async():
     """
-    Dispatch syncs for all eligible users without Celery.
+    Dispatch syncs for all eligible users.
     Runs each user's sync concurrently via asyncio.gather.
-    Call this from a FastAPI route (Tortoise already connected — manage_db=False).
+    Tortoise is already connected via the FastAPI app's lifespan — manage_db=False.
     """
     from v2.models import UserConfig, SyncJob
     from datetime import datetime, timezone, timedelta
@@ -255,85 +243,3 @@ async def dispatch_all_syncs_async():
     logger.info(f"[cron] dispatch_all_syncs_async done — {len(sync_tasks)} job(s) started")
 
 
-# ---------------------------------------------------------------------------
-# Celery tasks
-# ---------------------------------------------------------------------------
-
-@celery_app.task(name="v2.tasks.sync_user", bind=True, max_retries=3)
-def sync_user(self, user_id: str, sync_job_id: str):
-    """Sync one user's Google Sheet -> Notion DB. Retries up to 3 times on failure."""
-    try:
-        _run(_do_sync(user_id, sync_job_id))
-    except Exception as exc:
-        logger.error(f"[celery] sync_user failed user={user_id} job={sync_job_id}: {exc}")
-        raise self.retry(exc=exc, countdown=60)
-
-
-@celery_app.task(name="v2.tasks.dispatch_all_syncs")
-def dispatch_all_syncs():
-    """
-    Celery Beat task — runs every 5 minutes.
-    Dispatches a sync_user task for every user who:
-      1. Has a complete sync config
-      2. Has completed at least one manual sync (first sync must be manual)
-      3. Does NOT already have a pending/running sync job
-    """
-    async def _dispatch():
-        await _init_db()
-        try:
-            from v2.models import UserConfig, SyncJob
-
-            # Mark jobs stuck in pending/running for >30 min as failed
-            stale_cutoff = datetime.now(timezone.utc) - timedelta(minutes=30)
-            stale_jobs = await SyncJob.filter(
-                status__in=["pending", "running"],
-                created_at__lt=stale_cutoff,
-            )
-            for stale in stale_jobs:
-                stale.status = "failed"
-                stale.errors = ["Marked failed by Beat — job was stuck for >30 minutes"]
-                stale.finished_at = datetime.now(timezone.utc)
-                await stale.save()
-                logger.warning(f"[beat] Marked stale job {stale.id} as failed")
-
-            configs = await UserConfig.all().prefetch_related("user")
-            logger.info(f"[beat] Checking {len(configs)} user config(s)")
-            for config in configs:
-                user = config.user
-                if not config.spreadsheet_id or not config.notion_database_id or not config.column_mappings:
-                    logger.warning(
-                        f"[beat] Skipping {user.email} — incomplete config: "
-                        f"spreadsheet={bool(config.spreadsheet_id)} "
-                        f"database={bool(config.notion_database_id)} "
-                        f"mappings={bool(config.column_mappings)}"
-                    )
-                    continue
-
-                has_completed = await SyncJob.filter(
-                    user_id=user.id,
-                    status__in=["completed", "completed_with_errors"],
-                ).exists()
-                if not has_completed:
-                    logger.warning(f"[beat] Skipping {user.email} — no completed sync yet")
-                    continue
-
-                already_running = await SyncJob.filter(
-                    user_id=user.id,
-                    status__in=["pending", "running"],
-                ).exists()
-                if already_running:
-                    logger.warning(f"[beat] Skipping {user.email} — sync already in flight")
-                    continue
-
-                job = await SyncJob.create(
-                    id=uuid_mod.uuid4(),
-                    user_id=user.id,
-                    status="pending",
-                    triggered_by="scheduler",
-                )
-                sync_user.delay(str(user.id), str(job.id))
-                logger.info(f"[beat] Dispatched sync for {user.email} job={job.id}")
-        finally:
-            await _close_db()
-
-    _run(_dispatch())

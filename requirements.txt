@@ -10,3 +10,4 @@ python-multipart==0.0.12
 requests==2.32.3
 httpx==0.27.2
 anyio==4.6.2
+inngest==0.5.19

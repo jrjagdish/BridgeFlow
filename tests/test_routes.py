@@ -52,6 +52,7 @@ def _job(status="completed", triggered_by="manual"):
     j.rows_skipped = 2
     j.errors = []
     j.save = AsyncMock()
+    j.refresh_from_db = AsyncMock()
     return j
 
 
@@ -214,12 +215,9 @@ async def test_notion_disconnect_error(client):
 
 async def test_trigger_sync_success(client):
     mock_job = _job(status="pending")
-    mock_task = MagicMock()
-    mock_task.id = "celery-task-123"
 
     with patch("v2.models.SyncJob.create", new_callable=AsyncMock, return_value=mock_job), \
-         patch("v2.tasks.sync_user") as mock_celery:
-        mock_celery.apply_async.return_value = mock_task
+         patch("v2.tasks._do_sync", new_callable=AsyncMock):
         r = await client.post("/sync/trigger")
 
     assert r.status_code == 200

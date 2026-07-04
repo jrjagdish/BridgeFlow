@@ -15,8 +15,8 @@ No manual copy-pasting. No third-party automation subscriptions. Self-hostable.
 | Users | Single user, tokens.json | Multi-user, PostgreSQL |
 | Auth | Manual token copy | Google OAuth + Notion OAuth |
 | Database | SQLite | Neon PostgreSQL (cloud) |
-| Scheduler | APScheduler (in-process) | Celery Beat (separate process) |
-| Job queue | None | Celery + Redis |
+| Scheduler | APScheduler (in-process) | Inngest (cron trigger, serverless-friendly) |
+| Job queue | None | Inngest events |
 | Job tracking | None | SyncJob audit trail |
 | Frontend | None | React + Vite |
 | Deployment | Local only | Docker + Vercel |
@@ -38,9 +38,9 @@ Uses a configurable ID column to identify rows.
 * Preserves previously synced data on error — only the error message is updated.
 * Prevents duplicate entries.
 
-### Background Processing with Celery
+### Background Processing with Inngest
 
-Sync jobs run in a dedicated Celery worker process, separate from the API server. The Celery Beat scheduler dispatches auto-syncs on a configurable interval (default every 5 minutes).
+Auto-syncs are dispatched on a schedule (default every 5 minutes) by an Inngest cron function. Inngest calls back into the API over HTTP (`POST /api/inngest`), so there's no separate worker/beat process to run — it works on Vercel's serverless functions for free, unlike Celery.
 
 ### Full Job Audit Trail
 
@@ -70,7 +70,7 @@ A web UI for connecting accounts, configuring the sync, previewing sheet data, c
 * **FastAPI** — API server
 * **Tortoise ORM + asyncpg** — async database layer
 * **Neon PostgreSQL** — cloud Postgres (or any Postgres)
-* **Celery + Redis** — background job queue and beat scheduler
+* **Inngest** — scheduled/background job runs (serverless-friendly, no worker process)
 * **React + Vite** — frontend
 * **Docker + Docker Compose** — containerised deployment
 * **Vercel** — serverless deployment for API + frontend
@@ -88,7 +88,7 @@ bridgeflow/
 ├── requirements-dev.txt     # pytest, pytest-asyncio, httpx
 ├── pytest.ini
 ├── Dockerfile               # Python API image
-├── docker-compose.yml       # API + frontend + worker + beat
+├── docker-compose.yml       # API + frontend
 ├── vercel.json              # Vercel routing config
 ├── .env                     # Local environment variables
 │
@@ -99,8 +99,9 @@ bridgeflow/
 │   ├── models.py            # Tortoise ORM models + DB config
 │   ├── sheets_service.py    # Google Sheets API calls
 │   ├── notion_service.py    # Notion API calls
-│   ├── celery_app.py        # Celery app + Beat schedule
-│   └── tasks.py             # sync_user + dispatch_all_syncs tasks
+│   ├── inngest_client.py    # Inngest client instance
+│   ├── inngest_functions.py # Cron function — dispatches auto-syncs every 5 min
+│   └── tasks.py             # _do_sync + dispatch_all_syncs_async (sync logic)
 │
 ├── frontend/
 │   ├── package.json
@@ -164,8 +165,10 @@ NOTION_REDIRECT_URI=http://localhost:5173/oauth/notion/callback
 # Database (Neon PostgreSQL or any Postgres)
 DATABASE_URL=postgresql://user:password@host/dbname?ssl=require
 
-# Redis (Upstash or local)
-REDIS_URL=redis://localhost:6379/0
+# Inngest — local dev talks to the Inngest Dev Server; leave INNGEST_DEV unset in prod
+INNGEST_DEV=1
+# INNGEST_EVENT_KEY=       # prod only, from the Inngest dashboard
+# INNGEST_SIGNING_KEY=     # prod only, from the Inngest dashboard
 
 # Frontend URL (used for OAuth redirects)
 FRONTEND_URL=http://localhost:5173
@@ -175,7 +178,7 @@ FRONTEND_URL=http://localhost:5173
 
 ## Running Locally
 
-BridgeFlow requires three processes running simultaneously.
+BridgeFlow requires two processes running simultaneously, plus the Inngest Dev Server if you want to exercise the scheduled sync locally.
 
 ### Terminal 1 — API Server
 
@@ -183,23 +186,7 @@ BridgeFlow requires three processes running simultaneously.
 uvicorn main:app --reload
 ```
 
-### Terminal 2 — Celery Worker
-
-```bash
-# Windows
-celery -A v2.celery_app worker --loglevel=info -P solo
-
-# Linux / Mac
-celery -A v2.celery_app worker --loglevel=info
-```
-
-### Terminal 3 — Celery Beat Scheduler
-
-```bash
-celery -A v2.celery_app beat --loglevel=info
-```
-
-### Terminal 4 — Frontend
+### Terminal 2 — Frontend
 
 ```bash
 cd frontend && npm run dev
@@ -207,11 +194,19 @@ cd frontend && npm run dev
 
 Open `http://localhost:5173` in your browser.
 
+### Terminal 3 (optional) — Inngest Dev Server
+
+```bash
+npx inngest-cli@latest dev -u http://localhost:8000/api/inngest
+```
+
+This gives you a local dashboard (`http://localhost:8222`) to trigger and inspect the scheduled sync function without waiting for the real cron.
+
 ---
 
 ## Running with Docker
 
-Start all four processes with a single command:
+Start the API and frontend with a single command:
 
 ```bash
 docker compose up --build
@@ -243,7 +238,8 @@ Connect your GitHub repository. Vercel uses `vercel.json` — no additional conf
 | `NOTION_CLIENT_SECRET` | Notion OAuth client secret |
 | `NOTION_REDIRECT_URI` | `https://your-app.vercel.app/oauth/notion/callback` |
 | `DATABASE_URL` | Neon PostgreSQL connection string |
-| `REDIS_URL` | Upstash Redis URL |
+| `INNGEST_EVENT_KEY` | From the Inngest dashboard (production app) |
+| `INNGEST_SIGNING_KEY` | From the Inngest dashboard (production app) |
 | `FRONTEND_URL` | `https://your-app.vercel.app` |
 
 ### 4. Register Redirect URIs
@@ -258,7 +254,9 @@ https://your-app.vercel.app/oauth/callback
 https://your-app.vercel.app/oauth/notion/callback
 ```
 
-> **Note:** Vercel hosts the API and frontend. Celery worker and beat cannot run on Vercel (serverless). For auto-sync in production, deploy the worker and beat separately (Railway, Fly.io, or any VPS using `docker compose up worker beat`).
+### 5. Connect the app to Inngest
+
+In the [Inngest dashboard](https://app.inngest.com), create an app pointing at `https://your-app.vercel.app/api/inngest` and copy the Event Key + Signing Key into the Vercel env vars above. Inngest will call that endpoint on its own schedule (every 5 minutes, per the cron trigger in `v2/inngest_functions.py`) — no separate worker process needed, which is what makes this work on Vercel's free tier.
 
 ---
 
@@ -364,7 +362,7 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
-Tests cover all routes with a fully mocked database — no real PostgreSQL or Redis required.
+Tests cover all routes with a fully mocked database — no real PostgreSQL required.
 
 ---
 
