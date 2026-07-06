@@ -111,6 +111,12 @@ bridgeflow/
 │       ├── components/
 │       └── hooks/
 │
+├── sdk/                      # bridgeflow-cli PyPI package (SDK + CLI)
+│   ├── pyproject.toml
+│   └── bridgeflow/
+│       ├── client.py         # BridgeFlowClient
+│       └── cli.py            # `bridgeflow` command-line entry point
+│
 └── tests/
     └── test_routes.py       # Unit tests for all routes (mocked DB)
 ```
@@ -238,8 +244,8 @@ Connect your GitHub repository. Vercel uses `vercel.json` — no additional conf
 | `NOTION_CLIENT_SECRET` | Notion OAuth client secret |
 | `NOTION_REDIRECT_URI` | `https://your-app.vercel.app/oauth/notion/callback` |
 | `DATABASE_URL` | Neon PostgreSQL connection string |
-| `INNGEST_EVENT_KEY` | From the Inngest dashboard (production app) |
-| `INNGEST_SIGNING_KEY` | From the Inngest dashboard (production app) |
+| `INNGEST_EVENT_KEY` | Auto-set by the Inngest Vercel integration (see step 5) — only set manually if not using it |
+| `INNGEST_SIGNING_KEY` | Auto-set by the Inngest Vercel integration (see step 5) — only set manually if not using it |
 | `FRONTEND_URL` | `https://your-app.vercel.app` |
 
 ### 4. Register Redirect URIs
@@ -256,7 +262,11 @@ https://your-app.vercel.app/oauth/notion/callback
 
 ### 5. Connect the app to Inngest
 
-In the [Inngest dashboard](https://app.inngest.com), create an app pointing at `https://your-app.vercel.app/api/inngest` and copy the Event Key + Signing Key into the Vercel env vars above. Inngest will call that endpoint on its own schedule (every 5 minutes, per the cron trigger in `v2/inngest_functions.py`) — no separate worker process needed, which is what makes this work on Vercel's free tier.
+Recommended: install the [Inngest integration from the Vercel Marketplace](https://vercel.com/integrations/inngest) and connect it to this project. Vercel handles setting `INNGEST_EVENT_KEY` and `INNGEST_SIGNING_KEY` for you automatically — a Vercel project can serve one or more Inngest apps, each on its own path, and this one is served at `/api/inngest` (the SDK's default `serve_path`, already wired up in `main.py` and routed in `vercel.json`).
+
+Alternative (manual): in the [Inngest dashboard](https://app.inngest.com), create an app pointing at `https://your-app.vercel.app/api/inngest` and copy the Event Key + Signing Key into the Vercel env vars yourself.
+
+Either way, once connected, Inngest calls that endpoint on its own schedule (every 5 minutes, per the cron trigger in `v2/inngest_functions.py`) — no separate worker process needed, which is what makes this work on Vercel's free tier.
 
 ---
 
@@ -273,6 +283,9 @@ In the [Inngest dashboard](https://app.inngest.com), create an app pointing at `
 | `GET` | `/me` | Current user profile |
 | `POST` | `/logout` | Clear session cookie |
 | `POST` | `/oauth/notion/disconnect` | Remove Notion token |
+| `POST` | `/auth/api-key` | Issue a new API key for the CLI/SDK (replaces any existing one) |
+| `DELETE` | `/auth/api-key` | Revoke the current API key |
+| `GET` | `/auth/api-key/status` | Whether an API key is currently active |
 
 ### Sync
 
@@ -352,6 +365,20 @@ Notion text properties have a 2,000-character limit. Values exceeding this are a
 ### First Sync Must Be Manual
 
 Auto-sync via the scheduler only starts after the user has completed at least one successful manual sync. This prevents unintended background activity on misconfigured accounts.
+
+---
+
+## CLI / Python SDK
+
+BridgeFlow ships a companion Python package, `bridgeflow-cli` (source in [`sdk/`](sdk/)), for using the sync from a terminal or scripts instead of the browser.
+
+```bash
+pip install bridgeflow-cli
+bridgeflow login --api-key bf_xxxxxxxx --base-url https://your-app.vercel.app
+bridgeflow sync trigger --wait
+```
+
+Generate an API key from **Settings → API Access** in the web app. See [`sdk/README.md`](sdk/README.md) for full CLI and SDK usage.
 
 ---
 

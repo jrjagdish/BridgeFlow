@@ -13,6 +13,7 @@
   ],
   "rewrites": [
     { "source": "/oauth/(.*)",   "destination": "/main.py" },
+    { "source": "/auth/(.*)",    "destination": "/main.py" },
     { "source": "/notion/(.*)",  "destination": "/main.py" },
     { "source": "/sheets/(.*)",  "destination": "/main.py" },
     { "source": "/config",        "destination": "/main.py" },

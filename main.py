@@ -16,7 +16,7 @@ import inngest.fast_api
 from v2.models import get_db_config
 from v2.oauth import get_authorize_url, exchange_code_and_save_user
 from v2.notion_oauth import get_notion_authorize_url, exchange_notion_code_and_save
-from v2.auth import set_session_cookie, get_current_user_id
+from v2.auth import set_session_cookie, get_current_user_id, generate_api_key, hash_api_key
 from v2.sheets_service import fetch_sheet_preview
 from v2.notion_service import create_notion_page, create_notion_database
 from v2.inngest_client import inngest_client
@@ -66,6 +66,9 @@ async def run_migrations():
     conn = connections.get("default")
     await conn.execute_script(
         "ALTER TABLE user_configs ADD COLUMN IF NOT EXISTS id_column VARCHAR(255);"
+    )
+    await conn.execute_script(
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS api_key_hash VARCHAR(64) UNIQUE;"
     )
 
 
@@ -172,6 +175,48 @@ def logout_user(response: Response):
     from v2.auth import clear_session_cookie
     clear_session_cookie(response)
     return {"status": "logged out"}
+
+
+@app.post("/auth/api-key")
+async def create_api_key(user_id: str = Depends(get_current_user_id)):
+    """
+    Issue a new API key for the current user (for the CLI/SDK), replacing any
+    existing one. The raw key is returned only here — only its hash is stored.
+    """
+    from v2.models import User
+    try:
+        raw_key = generate_api_key()
+        user = await User.get(id=user_id)
+        user.api_key_hash = hash_api_key(raw_key)
+        await user.save()
+        logger.info(f"[auth] Issued new API key for user {user_id}")
+        return {"api_key": raw_key}
+    except Exception as e:
+        logger.error(f"[auth] Failed to create API key for user {user_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create API key")
+
+
+@app.delete("/auth/api-key")
+async def revoke_api_key(user_id: str = Depends(get_current_user_id)):
+    """Revoke the current user's API key, if any."""
+    from v2.models import User
+    try:
+        user = await User.get(id=user_id)
+        user.api_key_hash = None
+        await user.save()
+        logger.info(f"[auth] Revoked API key for user {user_id}")
+        return {"status": "revoked"}
+    except Exception as e:
+        logger.error(f"[auth] Failed to revoke API key for user {user_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to revoke API key")
+
+
+@app.get("/auth/api-key/status")
+async def api_key_status(user_id: str = Depends(get_current_user_id)):
+    """Whether the current user has an active API key (never returns the key itself)."""
+    from v2.models import User
+    user = await User.get(id=user_id)
+    return {"has_api_key": bool(user.api_key_hash)}
 
 
 @app.post("/oauth/notion/disconnect")

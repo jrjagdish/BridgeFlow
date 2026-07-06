@@ -65,6 +65,8 @@ class User(Model):
 
     notion_token = fields.CharField(max_length=512, null=True)
 
+    api_key_hash = fields.CharField(max_length=64, null=True, unique=True, index=True)
+
     created_at = fields.DatetimeField(auto_now_add=True)
 
     class Meta:

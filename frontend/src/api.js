@@ -93,6 +93,28 @@ export async function getConfig() {
 }
 
 // ---------------------------------------------------------------------------
+// API keys — used to authenticate the CLI/SDK (bearer token, no cookie)
+// ---------------------------------------------------------------------------
+
+export async function getApiKeyStatus() {
+  const res = await fetch('/auth/api-key/status', { credentials: 'include' })
+  if (!res.ok) throw new Error('Failed to load API key status')
+  return res.json()  // { has_api_key: bool }
+}
+
+export async function createApiKey() {
+  const res = await fetch('/auth/api-key', { method: 'POST', credentials: 'include' })
+  if (!res.ok) throw new Error('Failed to create API key')
+  return res.json()  // { api_key: string } — shown once
+}
+
+export async function revokeApiKey() {
+  const res = await fetch('/auth/api-key', { method: 'DELETE', credentials: 'include' })
+  if (!res.ok) throw new Error('Failed to revoke API key')
+  return res.json()
+}
+
+// ---------------------------------------------------------------------------
 // Feedback
 // ---------------------------------------------------------------------------
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getConfig, saveConfig } from '../api'
+import { getConfig, saveConfig, getApiKeyStatus, createApiKey, revokeApiKey } from '../api'
 
 const PROPERTY_TYPES = [
   'title', 'rich_text', 'number', 'select', 'multi_select',
@@ -83,6 +83,11 @@ export default function Settings({ isDark }) {
   const [saved, setSaved]   = useState(false)
   const [saving, setSaving] = useState(false)
 
+  const [hasApiKey, setHasApiKey]     = useState(false)
+  const [newApiKey, setNewApiKey]     = useState('')
+  const [keyBusy, setKeyBusy]         = useState(false)
+  const [keyCopied, setKeyCopied]     = useState(false)
+
   useEffect(() => {
     getConfig()
       .then(cfg => {
@@ -94,7 +99,40 @@ export default function Settings({ isDark }) {
       })
       .catch(() => { /* unauthenticated — leave defaults */ })
       .finally(() => setLoading(false))
+
+    getApiKeyStatus()
+      .then(s => setHasApiKey(!!s.has_api_key))
+      .catch(() => {})
   }, [])
+
+  const handleGenerateApiKey = async () => {
+    setKeyBusy(true)
+    setKeyCopied(false)
+    try {
+      const { api_key } = await createApiKey()
+      setNewApiKey(api_key)
+      setHasApiKey(true)
+    } finally {
+      setKeyBusy(false)
+    }
+  }
+
+  const handleRevokeApiKey = async () => {
+    setKeyBusy(true)
+    try {
+      await revokeApiKey()
+      setHasApiKey(false)
+      setNewApiKey('')
+    } finally {
+      setKeyBusy(false)
+    }
+  }
+
+  const handleCopyApiKey = async () => {
+    await navigator.clipboard.writeText(newApiKey)
+    setKeyCopied(true)
+    setTimeout(() => setKeyCopied(false), 2000)
+  }
 
   const updateMapping = (i, key, val) =>
     setMappings(ms => ms.map((m, idx) => idx === i ? { ...m, [key]: val } : m))
@@ -254,6 +292,64 @@ export default function Settings({ isDark }) {
           <p className={`text-xs mt-5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
             Minimum: 1 min · Recommended: 5 min
           </p>
+        </div>
+      </SectionCard>
+
+      {/* API Access — CLI / SDK */}
+      <SectionCard
+        title="API Access"
+        desc="Generate an API key to use the BridgeFlow CLI / Python SDK"
+        isDark={isDark}
+      >
+        {newApiKey && (
+          <div className={`rounded-xl p-4 border space-y-2
+            ${isDark ? 'bg-emerald-500/[0.06] border-emerald-500/20' : 'bg-emerald-50 border-emerald-200'}`}>
+            <p className={`text-xs font-medium ${isDark ? 'text-emerald-300' : 'text-emerald-700'}`}>
+              Copy this key now — it won't be shown again.
+            </p>
+            <div className="flex items-center gap-2">
+              <code className={`flex-1 px-3 py-2 rounded-lg text-xs font-mono break-all
+                ${isDark ? 'bg-black/30 text-slate-200' : 'bg-white text-slate-700'}`}>
+                {newApiKey}
+              </code>
+              <button
+                onClick={handleCopyApiKey}
+                className={`shrink-0 px-3 py-2 rounded-lg text-xs font-semibold transition-colors
+                  ${isDark ? 'bg-white/10 text-slate-200 hover:bg-white/20' : 'bg-slate-800 text-white hover:bg-slate-700'}`}
+              >
+                {keyCopied ? '✓ Copied' : 'Copy'}
+              </button>
+            </div>
+            <p className={`text-xs font-mono ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+              bridgeflow login --api-key {newApiKey.slice(0, 10)}…
+            </p>
+          </div>
+        )}
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleGenerateApiKey}
+            disabled={keyBusy}
+            className={`px-4 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-60
+              ${isDark ? 'bg-violet-500/20 text-violet-300 hover:bg-violet-500/30' : 'bg-violet-100 text-violet-700 hover:bg-violet-200'}`}
+          >
+            {hasApiKey ? 'Regenerate Key' : 'Generate API Key'}
+          </button>
+          {hasApiKey && (
+            <button
+              onClick={handleRevokeApiKey}
+              disabled={keyBusy}
+              className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all disabled:opacity-60
+                ${isDark ? 'text-red-400 hover:bg-red-400/10' : 'text-red-600 hover:bg-red-50'}`}
+            >
+              Revoke
+            </button>
+          )}
+          {hasApiKey && !newApiKey && (
+            <span className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+              An API key is active on your account.
+            </span>
+          )}
         </div>
       </SectionCard>
 
